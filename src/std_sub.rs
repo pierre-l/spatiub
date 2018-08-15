@@ -11,14 +11,10 @@ pub struct StdSubscriber{
 }
 
 impl Subscriber for StdSubscriber{
-    fn id(&self) -> &u64 {
-        &self.id
-    }
-
-    fn send(&self, event: Rc<Event>) -> Result<(), PubSubError> {
+    fn send(&self, event: Rc<Event>) -> Result<bool, PubSubError> {
         match self.sender.send(event) {
             Ok(()) => {
-                Ok(())
+                Ok(true)
             },
             Err(err) => {
                 Err(PubSubError::from(err))
@@ -47,8 +43,6 @@ mod tests{
             id: 0,
             sender,
         };
-        let subscriber_id = *subscriber.id();
-
         let mut pub_sub = PubSubChannel::new();
 
         pub_sub.subscribe(subscriber);
@@ -57,7 +51,5 @@ mod tests{
 
         let received_event = receiver.recv().unwrap();
         assert_eq!(Event::Sample, Rc::try_unwrap(received_event).unwrap());
-
-        pub_sub.unsubscribe(&subscriber_id).unwrap();
     }
 }

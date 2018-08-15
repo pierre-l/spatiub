@@ -6,44 +6,41 @@ use std::fmt::Formatter;
 use core::fmt;
 
 pub struct PubSubChannel<S>
-    where S: Subscriber
-{
-    subscribers: HashMap<u64, S>,
+    where S: Subscriber {
+    subscribers: Vec<S>,
 }
 
 impl <S> PubSubChannel<S> where S: Subscriber{
     pub fn new() -> PubSubChannel<S> {
         PubSubChannel{
-            subscribers: HashMap::new(),
+            subscribers: vec![],
         }
     }
 
     pub fn subscribe(&mut self, subscriber: S) {
-        let id = *subscriber.id();
-        self.subscribers.insert(id, subscriber);
+        self.subscribers.push(subscriber);
     }
 
-    pub fn unsubscribe(&mut self, subscriber_id: &u64) -> Result<S, PubSubError> {
-        if let Some(subscriber) = self.subscribers.remove(subscriber_id) {
-            Ok(subscriber)
-        } else {
-            Err(PubSubError::SubscriptionNotFound)
-        }
-    }
-
-    pub fn publish(&self, event: Event) -> Result<(), PubSubError>{
+    pub fn publish(&mut self, event: Event) -> Result<(), PubSubError>{
         let event = Rc::new(event);
-        for subscriber in self.subscribers.values() {
-            subscriber.send(event.clone())?;
-        }
+
+        self.subscribers.retain(|subscriber|{
+            match subscriber.send(event.clone()) {
+                Ok(retain) => retain,
+                Err(err) => {
+                    warn!("Subscriber dropped. Cause: {}", err);
+                    false
+                }
+            }
+        });
 
         Ok(())
     }
 }
 
 pub trait Subscriber{
-    fn id(&self) -> &u64;
-    fn send(&self, event: Rc<Event>) -> Result<(), PubSubError>;
+    /// Returns Ok(false) to
+    fn send(&self, event: Rc<Event>) -> Result<bool, PubSubError>;
 }
 
 #[derive(Debug, PartialEq)]

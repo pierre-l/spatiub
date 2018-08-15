@@ -23,14 +23,10 @@ pub fn new_channel(id: u64) -> (FutureSubscriber, UnboundedReceiver<Rc<Event>>) 
 }
 
 impl Subscriber for FutureSubscriber {
-    fn id(&self) -> &u64 {
-        &self.id
-    }
-
-    fn send(&self, event: Rc<Event>) -> Result<(), PubSubError> {
+    fn send(&self, event: Rc<Event>) -> Result<bool, PubSubError> {
         match &self.sender.unbounded_send(event) {
             Ok(()) => {
-                Ok(())
+                Ok(true)
             },
             Err(err) => {
                 Err(PubSubError::ReceiverIsGone)
@@ -48,8 +44,6 @@ mod tests{
     #[test]
     pub fn can_subscribe(){
         let (subscriber, receiver) = super::new_channel(0);
-        let subscriber_id = *subscriber.id();
-
         let mut pub_sub = PubSubChannel::new();
 
         pub_sub.subscribe(subscriber);
@@ -58,7 +52,5 @@ mod tests{
 
         let (received_event_option, _receiver) = receiver.into_future().wait().unwrap();
         assert_eq!(Event::Sample, Rc::try_unwrap(received_event_option.unwrap()).unwrap());
-
-        pub_sub.unsubscribe(&subscriber_id).unwrap();
     }
 }

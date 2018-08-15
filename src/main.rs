@@ -1,5 +1,7 @@
 extern crate core;
+extern crate env_logger;
 extern crate futures;
+#[macro_use] extern crate log;
 
 use std::error::Error;
 
