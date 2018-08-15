@@ -1,0 +1,6 @@
+[package]
+name = "spatiub"
+version = "0.1.0"
+authors = ["pierre-l <pierre.larger@gmail.com>"]
+
+[dependencies]
