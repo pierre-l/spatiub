@@ -23,8 +23,12 @@ impl <S> PubSubChannel<S> where S: Subscriber{
         self.subscribers.insert(id, subscriber);
     }
 
-    pub fn unsubscribe(&mut self, subscriber_id: &u64) {
-        self.subscribers.remove(subscriber_id);
+    pub fn unsubscribe(&mut self, subscriber_id: &u64) -> Result<S, PubSubError> {
+        if let Some(subscriber) = self.subscribers.remove(subscriber_id) {
+            Ok(subscriber)
+        } else {
+            Err(PubSubError::SubscriptionNotFound)
+        }
     }
 
     pub fn publish(&self, event: Event) -> Result<(), PubSubError>{
@@ -50,6 +54,7 @@ pub enum Event{
 #[derive(Debug)]
 pub enum PubSubError{
     ReceiverIsGone,
+    SubscriptionNotFound,
 }
 
 impl Error for PubSubError{}
