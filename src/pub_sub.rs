@@ -1,19 +1,21 @@
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use core::fmt;
+use std::marker::PhantomData;
 
-pub struct PubSubChannel<S>
-    where S: Subscriber {
+pub struct PubSubChannel<S, E>
+    where S: Subscriber<E> {
     subscribers: Vec<S>,
+    phantom: PhantomData<E>,
 }
 
-impl <S> PubSubChannel<S> where S: Subscriber{
-    pub fn new() -> PubSubChannel<S> {
+impl <S, E> PubSubChannel<S, E> where S: Subscriber<E>{
+    pub fn new() -> PubSubChannel<S, E> {
         PubSubChannel{
             subscribers: vec![],
+            phantom: PhantomData{},
         }
     }
 
@@ -21,7 +23,7 @@ impl <S> PubSubChannel<S> where S: Subscriber{
         self.subscribers.push(subscriber);
     }
 
-    pub fn publish(&mut self, event: Event) -> Result<(), PubSubError>{
+    pub fn publish(&mut self, event: E) -> Result<(), PubSubError>{
         let event = Rc::new(event);
 
         self.subscribers.retain(|subscriber|{
@@ -38,20 +40,14 @@ impl <S> PubSubChannel<S> where S: Subscriber{
     }
 }
 
-pub trait Subscriber{
+pub trait Subscriber<E>{
     /// Returns Ok(false) to
-    fn send(&self, event: Rc<Event>) -> Result<bool, PubSubError>;
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Event{
-    Sample,
+    fn send(&self, event: Rc<E>) -> Result<bool, PubSubError>;
 }
 
 #[derive(Debug)]
 pub enum PubSubError{
     ReceiverIsGone,
-    SubscriptionNotFound,
 }
 
 impl Error for PubSubError{}

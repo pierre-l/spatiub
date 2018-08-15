@@ -1,34 +1,30 @@
-use futures::{Stream, Future};
 use futures::unsync::mpsc::{self, UnboundedReceiver};
 use futures::unsync::mpsc::UnboundedSender;
-use pub_sub::Event;
 use pub_sub::PubSubError;
 use pub_sub::Subscriber;
 use std::rc::Rc;
 
-pub struct FutureSubscriber {
-    id: u64,
-    sender: UnboundedSender<Rc<Event>>,
+pub struct FutureSubscriber<E> {
+    sender: UnboundedSender<Rc<E>>,
 }
 
-pub fn new_channel(id: u64) -> (FutureSubscriber, UnboundedReceiver<Rc<Event>>) {
+pub fn new_channel<E>() -> (FutureSubscriber<E>, UnboundedReceiver<Rc<E>>) {
     let (sender, receiver) = mpsc::unbounded();
 
     let subscriber = FutureSubscriber {
-        id,
         sender,
     };
 
     (subscriber, receiver)
 }
 
-impl Subscriber for FutureSubscriber {
-    fn send(&self, event: Rc<Event>) -> Result<bool, PubSubError> {
+impl <E> Subscriber<E> for FutureSubscriber<E> {
+    fn send(&self, event: Rc<E>) -> Result<bool, PubSubError> {
         match &self.sender.unbounded_send(event) {
             Ok(()) => {
                 Ok(true)
             },
-            Err(err) => {
+            Err(_err) => {
                 Err(PubSubError::ReceiverIsGone)
             }
         }
@@ -38,19 +34,22 @@ impl Subscriber for FutureSubscriber {
 #[cfg(test)]
 mod tests{
     use pub_sub::PubSubChannel;
-    use std::sync::mpsc;
+    use futures::{Stream, Future};
     use super::*;
+
+    #[derive(Debug, PartialEq)]
+    struct TestEvent {}
 
     #[test]
     pub fn can_subscribe(){
-        let (subscriber, receiver) = super::new_channel(0);
+        let (subscriber, receiver) = super::new_channel();
         let mut pub_sub = PubSubChannel::new();
 
         pub_sub.subscribe(subscriber);
 
-        pub_sub.publish(Event::Sample).unwrap();
+        pub_sub.publish(TestEvent {}).unwrap();
 
         let (received_event_option, _receiver) = receiver.into_future().wait().unwrap();
-        assert_eq!(Event::Sample, Rc::try_unwrap(received_event_option.unwrap()).unwrap());
+        assert_eq!(TestEvent {}, Rc::try_unwrap(received_event_option.unwrap()).unwrap());
     }
 }

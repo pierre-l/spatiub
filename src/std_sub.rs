@@ -1,31 +1,22 @@
-use pub_sub::Event;
 use std::sync::mpsc::Sender;
 use pub_sub::Subscriber;
 use std::rc::Rc;
 use pub_sub::PubSubError;
-use std::sync::mpsc::SendError;
 
-pub struct StdSubscriber{
-    id: u64,
-    sender: Sender<Rc<Event>>,
+pub struct StdSubscriber<E>{
+    sender: Sender<Rc<E>>,
 }
 
-impl Subscriber for StdSubscriber{
-    fn send(&self, event: Rc<Event>) -> Result<bool, PubSubError> {
+impl <E> Subscriber<E> for StdSubscriber<E>{
+    fn send(&self, event: Rc<E>) -> Result<bool, PubSubError> {
         match self.sender.send(event) {
             Ok(()) => {
                 Ok(true)
             },
-            Err(err) => {
-                Err(PubSubError::from(err))
+            Err(_err) => {
+                Err(PubSubError::ReceiverIsGone)
             }
         }
-    }
-}
-
-impl From<SendError<Rc<Event>>> for PubSubError{
-    fn from(_: SendError<Rc<Event>>) -> Self {
-        PubSubError::ReceiverIsGone
     }
 }
 
@@ -35,21 +26,23 @@ mod tests{
     use pub_sub::PubSubChannel;
     use std::sync::mpsc;
 
+    #[derive(Debug, PartialEq)]
+    struct TestEvent {}
+
     #[test]
     pub fn can_subscribe(){
         let (sender, receiver) = mpsc::channel();
 
         let subscriber = StdSubscriber{
-            id: 0,
             sender,
         };
         let mut pub_sub = PubSubChannel::new();
 
         pub_sub.subscribe(subscriber);
 
-        pub_sub.publish(Event::Sample).unwrap();
+        pub_sub.publish(TestEvent{}).unwrap();
 
         let received_event = receiver.recv().unwrap();
-        assert_eq!(Event::Sample, Rc::try_unwrap(received_event).unwrap());
+        assert_eq!(TestEvent{}, Rc::try_unwrap(received_event).unwrap());
     }
 }
