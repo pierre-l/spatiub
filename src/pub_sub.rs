@@ -23,9 +23,7 @@ impl <S, E> PubSubChannel<S, E> where S: Subscriber<E>{
         self.subscribers.push(subscriber);
     }
 
-    pub fn publish(&mut self, event: E) -> Result<(), PubSubError>{
-        let event = Rc::new(event);
-
+    pub fn publish(&mut self, event: Rc<E>) -> Result<(), PubSubError>{
         self.subscribers.retain(|subscriber|{
             match subscriber.send(event.clone()) {
                 Ok(retain) => retain,
@@ -41,7 +39,7 @@ impl <S, E> PubSubChannel<S, E> where S: Subscriber<E>{
 }
 
 pub trait Subscriber<E>{
-    /// Returns Ok(false) to
+    /// Returns Ok(false) or Err to drop the subscription.
     fn send(&self, event: Rc<E>) -> Result<bool, PubSubError>;
 }
 

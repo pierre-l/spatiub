@@ -40,7 +40,7 @@ mod tests{
 
         pub_sub.subscribe(subscriber);
 
-        pub_sub.publish(TestEvent{}).unwrap();
+        pub_sub.publish(Rc::new(TestEvent{})).unwrap();
 
         let received_event = receiver.recv().unwrap();
         assert_eq!(TestEvent{}, Rc::try_unwrap(received_event).unwrap());

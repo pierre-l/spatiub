@@ -8,7 +8,7 @@ pub struct FutureSubscriber<E> {
     sender: UnboundedSender<Rc<E>>,
 }
 
-pub fn new_channel<E>() -> (FutureSubscriber<E>, UnboundedReceiver<Rc<E>>) {
+pub fn new_subscriber<E>() -> (FutureSubscriber<E>, UnboundedReceiver<Rc<E>>) {
     let (sender, receiver) = mpsc::unbounded();
 
     let subscriber = FutureSubscriber {
@@ -42,12 +42,12 @@ mod tests{
 
     #[test]
     pub fn can_subscribe(){
-        let (subscriber, receiver) = super::new_channel();
+        let (subscriber, receiver) = super::new_subscriber();
         let mut pub_sub = PubSubChannel::new();
 
         pub_sub.subscribe(subscriber);
 
-        pub_sub.publish(TestEvent {}).unwrap();
+        pub_sub.publish(Rc::new(TestEvent {})).unwrap();
 
         let (received_event_option, _receiver) = receiver.into_future().wait().unwrap();
         assert_eq!(TestEvent {}, Rc::try_unwrap(received_event_option.unwrap()).unwrap());
