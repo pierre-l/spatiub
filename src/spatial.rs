@@ -120,28 +120,30 @@ mod tests{
 
     #[test]
     pub fn can_subscribe(){
-        assert_can_subscribe(Point(0, 0), Point(1, 0));
-        assert_can_subscribe(Point(ZONE_WIDTH, 0), Point(ZONE_WIDTH+1, 0));
-        assert_can_subscribe(Point(ZONE_WIDTH, ZONE_WIDTH), Point(ZONE_WIDTH, ZONE_WIDTH+1));
+        assert_can_subscribe(&Point(0, 0), event(0, 0, 1, 0));
+        assert_can_subscribe(&Point(0, 0), event(ZONE_WIDTH, 0, ZONE_WIDTH+1, 0));
+        assert_can_subscribe(&Point(0, 0), event(ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH+1));
+        assert_can_subscribe(&Point(0, 0), event(ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH+ZONE_WIDTH));
     }
 
-    fn assert_can_subscribe(from: Point, to: Point) {
+    fn assert_can_subscribe(subscription_point: &Point, event: SpatialEvent) {
         let mut channel = SpatialChannel::new(
             MapDefinition {
                 zone_width: ZONE_WIDTH,
                 map_width_in_zones: ZONE_WIDTH,
             }
         );
-
-        let event = SpatialEvent {
-            from,
-            to,
-        };
-
         let (subscriber, receiver) = futures_sub::new_subscriber();
-        channel.subscribe(subscriber, &event.from);
+        channel.subscribe(subscriber, subscription_point);
         channel.publish(event);
         let (received_event_option, _receiver) = receiver.into_future().wait().ok().unwrap();
         assert!(received_event_option.is_some());
+    }
+
+    fn event(from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> SpatialEvent{
+        SpatialEvent{
+            from: Point(from_x, from_y),
+            to: Point(to_x, to_y),
+        }
     }
 }
