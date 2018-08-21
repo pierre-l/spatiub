@@ -8,7 +8,6 @@ use std::error::Error;
 mod pub_sub;
 mod futures_sub;
 mod spatial;
-mod std_sub;
 
 fn main() -> Result<(), Box<Error>> {
     println!("Hello, world!");
