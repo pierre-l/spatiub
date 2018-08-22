@@ -4,6 +4,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use core::fmt;
 use std::marker::PhantomData;
+use uuid::Uuid;
 
 pub struct PubSubChannel<S, E>
     where S: Subscriber<E> {
@@ -38,9 +39,10 @@ impl <S, E> PubSubChannel<S, E> where S: Subscriber<E>{
     }
 }
 
-pub trait Subscriber<E>{
+pub trait Subscriber<E>: Clone{
     /// Returns Ok(false) or Err to drop the subscription.
     fn send(&self, event: Rc<E>) -> Result<bool, PubSubError>;
+    fn entity_id(&self) -> &Uuid;
 }
 
 #[derive(Debug)]

@@ -1,13 +1,12 @@
-use pub_sub::PubSubChannel;
 use pub_sub::Subscriber;
 use std::collections::HashSet;
 use std::rc::Rc;
+use uuid::Uuid;
+use pub_sub::PubSubError;
 
-type Channel<S> = PubSubChannel<S, SpatialEvent>;
-
-struct SpatialChannel<S> where S: Subscriber<SpatialEvent>{
+pub struct SpatialChannel<S> where S: Subscriber<SpatialEvent>{
     map_definition: MapDefinition,
-    channels: Vec<Channel<S>>,
+    channels: Vec<ZoneChannel<S>>,
 }
 
 impl <S> SpatialChannel<S> where S: Subscriber<SpatialEvent>{
@@ -18,7 +17,7 @@ impl <S> SpatialChannel<S> where S: Subscriber<SpatialEvent>{
 
         for _x in 0..map_definition.map_width_in_zones {
             for _y in 0..map_definition.map_width_in_zones {
-                channels.push(Channel::new());
+                channels.push(ZoneChannel::new());
             }
         }
 
@@ -63,21 +62,64 @@ impl <S> SpatialChannel<S> where S: Subscriber<SpatialEvent>{
     }
 }
 
-struct SpatialEvent{
-    from: Point,
-    to: Point,
+pub struct ZoneChannel<S>
+    where S: Subscriber<SpatialEvent> {
+    subscribers: Vec<S>,
 }
 
-struct MapDefinition{
+impl <S> ZoneChannel<S> where S: Subscriber<SpatialEvent>{
+    pub fn new() -> ZoneChannel<S> {
+        ZoneChannel{
+            subscribers: vec![],
+        }
+    }
+
+    pub fn subscribe(&mut self, subscriber: S) {
+        self.subscribers.push(subscriber);
+    }
+
+    pub fn publish(&mut self, event: Rc<SpatialEvent>) -> Result<(), PubSubError>{
+        let mut dropped_subscriber_option= None;
+
+        self.subscribers.retain(|subscriber|{
+            match subscriber.send(event.clone()) {
+                Ok(retain) => {
+                    if event.is_a_move && subscriber.entity_id() == &event.actor_id {
+                        dropped_subscriber_option = Some(subscriber.clone());
+                        false
+                    } else {
+                        retain
+                    }
+                },
+                Err(err) => {
+                    warn!("Subscriber dropped. Cause: {}", err);
+                    false
+                }
+            }
+        });
+
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct SpatialEvent{
+    from: Point,
+    to: Point,
+    actor_id: Uuid,
+    is_a_move: bool,
+}
+
+pub struct MapDefinition{
     zone_width: usize,
     map_width_in_zones: usize
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
-struct Point(usize, usize);
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+pub struct Point(usize, usize);
 
 #[derive(Debug, Hash, Eq, PartialEq)]
-struct Zone(Point, Point);
+pub struct Zone(Point, Point);
 
 fn compute_indexes_for_zones_in_range<F>(
     point: &Point,
@@ -120,10 +162,16 @@ mod tests{
 
     #[test]
     pub fn can_subscribe(){
-        assert_can_subscribe(&Point(0, 0), event(0, 0, 1, 0));
-        assert_can_subscribe(&Point(0, 0), event(ZONE_WIDTH, 0, ZONE_WIDTH+1, 0));
-        assert_can_subscribe(&Point(0, 0), event(ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH+1));
-        assert_can_subscribe(&Point(0, 0), event(ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH+ZONE_WIDTH));
+        assert_can_subscribe(&Point(0, 0),
+                             event(0, 0, 1, 0));
+        assert_can_subscribe(&Point(0, 0),
+                             event(ZONE_WIDTH, 0, ZONE_WIDTH+1, 0));
+        assert_can_subscribe(&Point(0, 0),
+                             event(ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH+1));
+        assert_can_subscribe(&Point(0, 0),
+                             event(ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH+ZONE_WIDTH));
+        assert_can_subscribe(&Point(0, 0),
+                             event(ZONE_WIDTH+ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH));
     }
 
     fn assert_can_subscribe(subscription_point: &Point, event: SpatialEvent) {
@@ -133,7 +181,7 @@ mod tests{
                 map_width_in_zones: ZONE_WIDTH,
             }
         );
-        let (subscriber, receiver) = futures_sub::new_subscriber();
+        let (subscriber, receiver) = futures_sub::new_subscriber(Uuid::new_v4());
         channel.subscribe(subscriber, subscription_point);
         channel.publish(event);
         let (received_event_option, _receiver) = receiver.into_future().wait().ok().unwrap();
@@ -144,6 +192,8 @@ mod tests{
         SpatialEvent{
             from: Point(from_x, from_y),
             to: Point(to_x, to_y),
+            actor_id: Uuid::new_v4(),
+            is_a_move: true,
         }
     }
 }

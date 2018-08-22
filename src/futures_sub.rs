@@ -3,22 +3,26 @@ use futures::unsync::mpsc::UnboundedSender;
 use pub_sub::PubSubError;
 use pub_sub::Subscriber;
 use std::rc::Rc;
+use uuid::Uuid;
 
-pub struct FutureSubscriber<E> {
+#[derive(Clone)]
+pub struct FutureSubscriber<E: Clone> {
     sender: UnboundedSender<Rc<E>>,
+    entity_id: Uuid,
 }
 
-pub fn new_subscriber<E>() -> (FutureSubscriber<E>, UnboundedReceiver<Rc<E>>) {
+pub fn new_subscriber<E: Clone>(entity_id: Uuid) -> (FutureSubscriber<E>, UnboundedReceiver<Rc<E>>) {
     let (sender, receiver) = mpsc::unbounded();
 
     let subscriber = FutureSubscriber {
         sender,
+        entity_id,
     };
 
     (subscriber, receiver)
 }
 
-impl <E> Subscriber<E> for FutureSubscriber<E> {
+impl <E: Clone> Subscriber<E> for FutureSubscriber<E> {
     fn send(&self, event: Rc<E>) -> Result<bool, PubSubError> {
         match &self.sender.unbounded_send(event) {
             Ok(()) => {
@@ -29,6 +33,10 @@ impl <E> Subscriber<E> for FutureSubscriber<E> {
             }
         }
     }
+
+    fn entity_id(&self) -> &Uuid {
+        &self.entity_id
+    }
 }
 
 #[cfg(test)]
@@ -37,12 +45,12 @@ mod tests{
     use futures::{Stream, Future};
     use super::*;
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     struct TestEvent {}
 
     #[test]
     pub fn can_subscribe(){
-        let (subscriber, receiver) = super::new_subscriber();
+        let (subscriber, receiver) = super::new_subscriber(Uuid::new_v4());
         let mut pub_sub = PubSubChannel::new();
 
         pub_sub.subscribe(subscriber);
