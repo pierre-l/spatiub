@@ -36,11 +36,13 @@ impl <S> SpatialChannel<S> where S: Subscriber<SpatialEvent>{
             self.publish_if_channel_exists(index, &event);
         });
 
-        compute_indexes_for_zones_in_range(&event.to, zone_width, |index|{
-            if !from_indexes.contains(&index) {
-                self.publish_if_channel_exists(index, &event);
-            }
-        });
+        if let Some(ref destination) = event.to {
+            compute_indexes_for_zones_in_range(destination, zone_width, |index|{
+                if !from_indexes.contains(&index) {
+                    self.publish_if_channel_exists(index, &event);
+                }
+            });
+        }
     }
 
     pub fn subscribe(&mut self, subscriber: S, position: &Point) {
@@ -59,9 +61,11 @@ impl <S> SpatialChannel<S> where S: Subscriber<SpatialEvent>{
             None
         };
 
-        if let Some(dropped_entity_subscriber) = dropped_subscriber_option{
-            if self.map_definition.point_is_inside(&event.to) {
-                self.subscribe(dropped_entity_subscriber, &event.to);
+        if let Some(ref destination) = event.to {
+            if let Some(dropped_entity_subscriber) = dropped_subscriber_option{
+                if self.map_definition.point_is_inside(destination) {
+                    self.subscribe(dropped_entity_subscriber, destination);
+                }
             }
         }
     }
@@ -110,7 +114,7 @@ impl <S> ZoneChannel<S> where S: Subscriber<SpatialEvent>{
 #[derive(Clone)]
 pub struct SpatialEvent{
     from: Point,
-    to: Point,
+    to: Option<Point>,
     actor_id: Uuid,
     is_a_move: bool,
 }
@@ -209,7 +213,7 @@ mod tests{
 
             channel.publish(SpatialEvent{
                 from: position,
-                to: destination.clone(),
+                to: Some(destination.clone()),
                 actor_id: entity_id,
                 is_a_move: true,
             });
@@ -239,7 +243,7 @@ mod tests{
     fn event(from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> SpatialEvent{
         SpatialEvent{
             from: Point(from_x, from_y),
-            to: Point(to_x, to_y),
+            to: Some(Point(to_x, to_y)),
             actor_id: Uuid::new_v4(),
             is_a_move: true,
         }
