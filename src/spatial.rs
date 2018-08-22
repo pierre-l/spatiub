@@ -2,7 +2,6 @@ use pub_sub::Subscriber;
 use std::collections::HashSet;
 use std::rc::Rc;
 use uuid::Uuid;
-use pub_sub::PubSubError;
 
 pub struct SpatialChannel<S> where S: Subscriber<SpatialEvent>{
     map_definition: MapDefinition,
@@ -54,9 +53,15 @@ impl <S> SpatialChannel<S> where S: Subscriber<SpatialEvent>{
     }
 
     fn publish_if_channel_exists(&mut self, channel_index: usize, event: &Rc<SpatialEvent>) {
-        if let Some(channel) =  self.channels.get_mut(channel_index) {
-            if let Err(err) = channel.publish(event.clone()) {
-                error!("{}", err)
+        let dropped_subscriber_option = if let Some(channel) =  self.channels.get_mut(channel_index) {
+            channel.publish(event.clone())
+        } else {
+            None
+        };
+
+        if let Some(dropped_entity_subscriber) = dropped_subscriber_option{
+            if self.map_definition.point_is_inside(&event.to) {
+                self.subscribe(dropped_entity_subscriber, &event.to);
             }
         }
     }
@@ -78,7 +83,7 @@ impl <S> ZoneChannel<S> where S: Subscriber<SpatialEvent>{
         self.subscribers.push(subscriber);
     }
 
-    pub fn publish(&mut self, event: Rc<SpatialEvent>) -> Result<(), PubSubError>{
+    pub fn publish(&mut self, event: Rc<SpatialEvent>) -> Option<S>{
         let mut dropped_subscriber_option= None;
 
         self.subscribers.retain(|subscriber|{
@@ -98,7 +103,7 @@ impl <S> ZoneChannel<S> where S: Subscriber<SpatialEvent>{
             }
         });
 
-        Ok(())
+        dropped_subscriber_option
     }
 }
 
@@ -113,6 +118,16 @@ pub struct SpatialEvent{
 pub struct MapDefinition{
     zone_width: usize,
     map_width_in_zones: usize
+}
+
+impl MapDefinition{
+    pub fn point_is_inside(&self, point: &Point) -> bool {
+        self.coord_is_inside(&point.0) && self.coord_is_inside(&point.1)
+    }
+
+    pub fn coord_is_inside(&self, coord: &usize) -> bool {
+        coord < &(&self.zone_width * &self.map_width_in_zones)
+    }
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
@@ -172,6 +187,39 @@ mod tests{
                              event(ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH+ZONE_WIDTH));
         assert_can_subscribe(&Point(0, 0),
                              event(ZONE_WIDTH+ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH, ZONE_WIDTH));
+    }
+
+    #[test]
+    pub fn subscription_follows_moving_entity() {
+        let mut channel = SpatialChannel::new(
+            MapDefinition {
+                zone_width: ZONE_WIDTH,
+                map_width_in_zones: ZONE_WIDTH,
+            }
+        );
+
+        let entity_id = Uuid::new_v4();
+        let (subscriber, mut receiver) = futures_sub::new_subscriber(entity_id);
+
+        let mut position = Point(0, 0);
+        channel.subscribe(subscriber, &position);
+
+        for _i in 0..ZONE_WIDTH * 10 {
+            let destination = Point(position.0 + 1, position.1);
+
+            channel.publish(SpatialEvent{
+                from: position,
+                to: destination.clone(),
+                actor_id: entity_id,
+                is_a_move: true,
+            });
+
+            let (received_event_option, receiver_tmp) = receiver.into_future().wait().ok().unwrap();
+            receiver = receiver_tmp;
+
+            assert!(received_event_option.is_some());
+            position = destination;
+        }
     }
 
     fn assert_can_subscribe(subscription_point: &Point, event: SpatialEvent) {
