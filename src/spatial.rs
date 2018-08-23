@@ -2,15 +2,16 @@ use pub_sub::Subscriber;
 use std::collections::HashSet;
 use std::rc::Rc;
 use uuid::Uuid;
+use futures_sub::FutureSubscriber;
 
-pub struct SpatialChannel<S> where S: Subscriber<SpatialEvent>{
+pub struct SpatialChannel {
     map_definition: MapDefinition,
-    channels: Vec<ZoneChannel<S>>,
+    channels: Vec<ZoneChannel>,
 }
 
-impl <S> SpatialChannel<S> where S: Subscriber<SpatialEvent>{
+impl SpatialChannel{
     pub fn new(map_definition: MapDefinition)
-        -> SpatialChannel<S>
+        -> SpatialChannel
     {
         let mut channels = vec![];
 
@@ -45,7 +46,7 @@ impl <S> SpatialChannel<S> where S: Subscriber<SpatialEvent>{
         }
     }
 
-    pub fn subscribe(&mut self, subscriber: S, position: &Point) {
+    pub fn subscribe(&mut self, subscriber: FutureSubscriber<SpatialEvent>, position: &Point) {
         let zone_index = zone_index_for_point(position, self.map_definition.zone_width);
         if let Some(channel) = self.channels.get_mut(zone_index) {
             channel.subscribe(subscriber);
@@ -71,23 +72,22 @@ impl <S> SpatialChannel<S> where S: Subscriber<SpatialEvent>{
     }
 }
 
-pub struct ZoneChannel<S>
-    where S: Subscriber<SpatialEvent> {
-    subscribers: Vec<S>,
+pub struct ZoneChannel {
+    subscribers: Vec<FutureSubscriber<SpatialEvent>>,
 }
 
-impl <S> ZoneChannel<S> where S: Subscriber<SpatialEvent>{
-    pub fn new() -> ZoneChannel<S> {
+impl ZoneChannel where {
+    pub fn new() -> ZoneChannel {
         ZoneChannel{
             subscribers: vec![],
         }
     }
 
-    pub fn subscribe(&mut self, subscriber: S) {
+    pub fn subscribe(&mut self, subscriber: FutureSubscriber<SpatialEvent>) {
         self.subscribers.push(subscriber);
     }
 
-    pub fn publish(&mut self, event: Rc<SpatialEvent>) -> Option<S>{
+    pub fn publish(&mut self, event: Rc<SpatialEvent>) -> Option<FutureSubscriber<SpatialEvent>>{
         let mut dropped_subscriber_option= None;
 
         self.subscribers.retain(|subscriber|{
