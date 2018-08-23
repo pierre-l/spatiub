@@ -4,14 +4,14 @@ use std::rc::Rc;
 use uuid::Uuid;
 use futures_sub::FutureSubscriber;
 
-pub struct SpatialChannel {
+pub struct SpatialChannel<E> where E: Entity+Clone {
     map_definition: MapDefinition,
-    channels: Vec<ZoneChannel>,
+    channels: Vec<ZoneChannel<E>>,
 }
 
-impl SpatialChannel{
+impl <E> SpatialChannel<E> where E: Entity+Clone{
     pub fn new(map_definition: MapDefinition)
-        -> SpatialChannel
+        -> SpatialChannel<E>
     {
         let mut channels = vec![];
 
@@ -27,7 +27,7 @@ impl SpatialChannel{
         }
     }
 
-    pub fn publish(&mut self, event: SpatialEvent) {
+    pub fn publish(&mut self, event: SpatialEvent<E>) {
         let event = Rc::new(event);
         let zone_width = self.map_definition.zone_width;
 
@@ -46,7 +46,7 @@ impl SpatialChannel{
         }
     }
 
-    pub fn subscribe(&mut self, subscriber: FutureSubscriber<SpatialEvent>, position: &Point) {
+    pub fn subscribe(&mut self, subscriber: FutureSubscriber<SpatialEvent<E>>, position: &Point) {
         let zone_index = zone_index_for_point(position, self.map_definition.zone_width);
         if let Some(channel) = self.channels.get_mut(zone_index) {
             channel.subscribe(subscriber);
@@ -55,7 +55,7 @@ impl SpatialChannel{
         }
     }
 
-    fn publish_if_channel_exists(&mut self, channel_index: usize, event: &Rc<SpatialEvent>) {
+    fn publish_if_channel_exists(&mut self, channel_index: usize, event: &Rc<SpatialEvent<E>>) {
         let dropped_subscriber_option = if let Some(channel) =  self.channels.get_mut(channel_index) {
             channel.publish(event.clone())
         } else {
@@ -72,28 +72,28 @@ impl SpatialChannel{
     }
 }
 
-pub struct ZoneChannel {
-    subscribers: Vec<FutureSubscriber<SpatialEvent>>,
+pub struct ZoneChannel<E> where E: Entity+Clone{
+    subscribers: Vec<FutureSubscriber<SpatialEvent<E>>>,
 }
 
-impl ZoneChannel where {
-    pub fn new() -> ZoneChannel {
+impl <E> ZoneChannel<E> where E: Entity+Clone {
+    pub fn new() -> ZoneChannel<E> {
         ZoneChannel{
             subscribers: vec![],
         }
     }
 
-    pub fn subscribe(&mut self, subscriber: FutureSubscriber<SpatialEvent>) {
+    pub fn subscribe(&mut self, subscriber: FutureSubscriber<SpatialEvent<E>>) {
         self.subscribers.push(subscriber);
     }
 
-    pub fn publish(&mut self, event: Rc<SpatialEvent>) -> Option<FutureSubscriber<SpatialEvent>>{
+    pub fn publish(&mut self, event: Rc<SpatialEvent<E>>) -> Option<FutureSubscriber<SpatialEvent<E>>>{
         let mut dropped_subscriber_option= None;
 
         self.subscribers.retain(|subscriber|{
             match subscriber.send(event.clone()) {
                 Ok(retain) => {
-                    if event.is_a_move && subscriber.entity_id() == &event.actor_id {
+                    if event.is_a_move && subscriber.entity_id() == event.acting_entity.id() {
                         dropped_subscriber_option = Some(subscriber.clone());
                         false
                     } else {
@@ -112,10 +112,10 @@ impl ZoneChannel where {
 }
 
 #[derive(Clone)]
-pub struct SpatialEvent{
+pub struct SpatialEvent<E: Entity>{
     from: Point,
     to: Option<Point>,
-    actor_id: Uuid,
+    acting_entity: E,
     is_a_move: bool,
 }
 
@@ -139,6 +139,10 @@ pub struct Point(usize, usize);
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct Zone(Point, Point);
+
+pub trait Entity {
+    fn id(&self) -> &Uuid;
+}
 
 fn compute_indexes_for_zones_in_range<F>(
     point: &Point,
@@ -203,6 +207,10 @@ mod tests{
         );
 
         let entity_id = Uuid::new_v4();
+        let entity = TestEntity{
+            id: entity_id.clone(),
+        };
+
         let (subscriber, mut receiver) = futures_sub::new_subscriber(entity_id);
 
         let mut position = Point(0, 0);
@@ -214,7 +222,7 @@ mod tests{
             channel.publish(SpatialEvent{
                 from: position,
                 to: Some(destination.clone()),
-                actor_id: entity_id,
+                acting_entity: entity.clone(),
                 is_a_move: true,
             });
 
@@ -226,7 +234,7 @@ mod tests{
         }
     }
 
-    fn assert_can_subscribe(subscription_point: &Point, event: SpatialEvent) {
+    fn assert_can_subscribe(subscription_point: &Point, event: SpatialEvent<TestEntity>) {
         let mut channel = SpatialChannel::new(
             MapDefinition {
                 zone_width: ZONE_WIDTH,
@@ -240,12 +248,25 @@ mod tests{
         assert!(received_event_option.is_some());
     }
 
-    fn event(from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> SpatialEvent{
+    fn event(from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> SpatialEvent<TestEntity>{
         SpatialEvent{
             from: Point(from_x, from_y),
             to: Some(Point(to_x, to_y)),
-            actor_id: Uuid::new_v4(),
+            acting_entity: TestEntity{
+                id: Uuid::new_v4()
+            },
             is_a_move: true,
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestEntity{
+        id: Uuid,
+    }
+
+    impl Entity for TestEntity{
+        fn id(&self) -> &Uuid {
+            &self.id
         }
     }
 }
