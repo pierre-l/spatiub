@@ -21,7 +21,11 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
 
         for x in 0..map_width_in_zones {
             for y in 0..map_width_in_zones {
-                let visible_area = compute_visible_area(zone_width, map_width_in_zones, x, y);
+                let area_start = Point(x * zone_width, y * zone_width);
+                let area_end = Point(area_start.0 + zone_width, area_start.1 + zone_width);
+                let area = Zone(area_start, area_end);
+
+                let visible_area = compute_visible_area(zone_width, map_width_in_zones, area);
 
                 channels.push(ZoneChannel::new(visible_area));
             }
@@ -233,9 +237,9 @@ fn zone_index_for_point(point: &Point, zone_width: usize) -> usize{
 }
 
 const RANGE_IN_ZONES: usize = 1;
-fn compute_visible_area(zone_width: usize, map_width_in_zones: usize, x: usize, y: usize) -> Zone {
-    let mut visible_area_start = Point(x * zone_width, y * zone_width);
-    let mut visible_area_end = Point(visible_area_start.0 + zone_width, visible_area_start.1 + zone_width);
+fn compute_visible_area(zone_width: usize, map_width_in_zones: usize, from_zone: Zone) -> Zone {
+    let mut visible_area_start = from_zone.0;
+    let mut visible_area_end = from_zone.1;
 
     visible_area_start.0 = if visible_area_start.0 >= zone_width {
         visible_area_start.0 - zone_width * RANGE_IN_ZONES
@@ -335,14 +339,17 @@ mod tests{
 
     #[test]
     pub fn can_compute_visible_area() {
-        let zone = compute_visible_area(ZONE_WIDTH, 3, 1, 1);
-        assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*3, ZONE_WIDTH*3)), zone);
+        let zone = Zone(Point(ZONE_WIDTH, ZONE_WIDTH), Point(ZONE_WIDTH*2, ZONE_WIDTH*2));
+        let visible_area = compute_visible_area(ZONE_WIDTH, 3, zone);
+        assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*3, ZONE_WIDTH*3)), visible_area);
 
-        let zone = compute_visible_area(ZONE_WIDTH, 2, 1, 1);
-        assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*2, ZONE_WIDTH*2)), zone);
+        let zone = Zone(Point(ZONE_WIDTH, ZONE_WIDTH), Point(ZONE_WIDTH*2, ZONE_WIDTH*2));
+        let visible_area = compute_visible_area(ZONE_WIDTH, 2, zone);
+        assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*2, ZONE_WIDTH*2)), visible_area);
 
-        let zone = compute_visible_area(ZONE_WIDTH, 3, 0, 0);
-        assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*2, ZONE_WIDTH*2)), zone);
+        let zone = Zone(Point(0, 0), Point(ZONE_WIDTH, ZONE_WIDTH));
+        let visible_area = compute_visible_area(ZONE_WIDTH, 3, zone);
+        assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*2, ZONE_WIDTH*2)), visible_area);
     }
 
     #[test]
