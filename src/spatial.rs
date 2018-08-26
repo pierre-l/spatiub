@@ -5,14 +5,14 @@ use uuid::Uuid;
 use futures_sub::FutureSubscriber;
 use std::collections::HashMap;
 
-pub struct SpatialChannel<E> where E: Entity+Clone {
+pub struct SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone {
     map_definition: MapDefinition,
-    channels: Vec<ZoneChannel<E>>,
+    channels: Vec<ZoneChannel<S, E>>,
 }
 
-impl <E> SpatialChannel<E> where E: Entity+Clone{
+impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone{
     pub fn new(map_definition: MapDefinition)
-        -> SpatialChannel<E>
+        -> SpatialChannel<S, E>
     {
         let mut channels = vec![];
 
@@ -52,7 +52,7 @@ impl <E> SpatialChannel<E> where E: Entity+Clone{
         }
     }
 
-    pub fn subscribe(&mut self, subscriber: FutureSubscriber<SpatialEvent<E>>, position: &Point) {
+    pub fn subscribe(&mut self, subscriber: S, position: &Point) {
         let zone_index = zone_index_for_point(position, self.map_definition.zone_width);
         if let Some(channel) = self.channels.get_mut(zone_index) {
             channel.subscribe(subscriber);
@@ -78,14 +78,14 @@ impl <E> SpatialChannel<E> where E: Entity+Clone{
     }
 }
 
-pub struct ZoneChannel<E> where E: Entity+Clone{
+pub struct ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone{
     visible_area: Zone,
-    subscribers: Vec<FutureSubscriber<SpatialEvent<E>>>,
+    subscribers: Vec<S>,
     visible_entities: HashMap<Uuid, (Point, E)>,
 }
 
-impl <E> ZoneChannel<E> where E: Entity+Clone {
-    pub fn new(zone: Zone) -> ZoneChannel<E> {
+impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone {
+    pub fn new(zone: Zone) -> ZoneChannel<S, E> {
         ZoneChannel{
             visible_area: zone,
             subscribers: vec![],
@@ -93,7 +93,7 @@ impl <E> ZoneChannel<E> where E: Entity+Clone {
         }
     }
 
-    pub fn subscribe(&mut self, subscriber: FutureSubscriber<SpatialEvent<E>>) {
+    pub fn subscribe(&mut self, subscriber: S) {
         for (position, entity) in self.visible_entities.values(){
             subscriber.send(Rc::new(SpatialEvent{
                 from: position.clone(),
@@ -106,7 +106,7 @@ impl <E> ZoneChannel<E> where E: Entity+Clone {
         self.subscribers.push(subscriber);
     }
 
-    pub fn publish(&mut self, event: Rc<SpatialEvent<E>>) -> Option<FutureSubscriber<SpatialEvent<E>>>{
+    pub fn publish(&mut self, event: Rc<SpatialEvent<E>>) -> Option<S>{
         self.process_entity_move(&event);
 
         let mut dropped_subscriber_option = None;
@@ -121,7 +121,7 @@ impl <E> ZoneChannel<E> where E: Entity+Clone {
                         retain
                     }
                 },
-                Err(err) => {
+                Err(_err) => {
                     false
                 }
             }
@@ -391,7 +391,7 @@ mod tests{
         assert!(received_event_option.is_some());
     }
 
-    fn test_channel() -> SpatialChannel<TestEntity> {
+    fn test_channel() -> SpatialChannel<FutureSubscriber<SpatialEvent<TestEntity>>, TestEntity> {
         SpatialChannel::new(
             MapDefinition {
                 zone_width: ZONE_WIDTH,
