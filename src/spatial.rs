@@ -2,7 +2,6 @@ use pub_sub::Subscriber;
 use std::collections::HashSet;
 use std::rc::Rc;
 use uuid::Uuid;
-use futures_sub::FutureSubscriber;
 use std::collections::HashMap;
 
 pub struct SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone {
@@ -25,9 +24,7 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
                 let area_end = Point(area_start.0 + zone_width, area_start.1 + zone_width);
                 let area = Zone(area_start, area_end);
 
-                let visible_area = compute_visible_area(zone_width, map_width_in_zones, area);
-
-                channels.push(ZoneChannel::new(visible_area));
+                channels.push(ZoneChannel::new(area, &map_definition));
             }
         }
 
@@ -89,9 +86,10 @@ pub struct ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clo
 }
 
 impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone {
-    pub fn new(zone: Zone) -> ZoneChannel<S, E> {
+    pub fn new(area: Zone, map_definition: &MapDefinition) -> ZoneChannel<S, E> {
+        let visible_area = compute_visible_area(map_definition, area);
         ZoneChannel{
-            visible_area: zone,
+            visible_area,
             subscribers: vec![],
             visible_entities: HashMap::new(),
         }
@@ -139,10 +137,7 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
             if self.visible_area.point_is_in(&event.from) {
                 if let Some(ref destination) = event.to {
                     if self.visible_area.point_is_in(&destination) {
-                        let entity = event.acting_entity.clone();
-                        let entity_id = entity.id().clone();
-                        let position = destination.clone();
-                        self.visible_entities.insert(entity_id, (position, entity));
+                        self.insert_entity(event.acting_entity.clone(), destination.clone());
                     } else {
                         self.visible_entities.remove(event.acting_entity.id());
                     }
@@ -151,17 +146,19 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
                 }
             } else if let Some(ref destination) = event.to {
                 if self.visible_area.point_is_in(&destination) {
-                    let entity = event.acting_entity.clone();
-                    let entity_id = entity.id().clone();
-                    let position = destination.clone();
-                    self.visible_entities.insert(entity_id, (position, entity));
+                    self.insert_entity(event.acting_entity.clone(), destination.clone());
                 }
             }
         }
     }
+
+    fn insert_entity(&mut self, entity: E, position: Point) {
+        let entity_id = entity.id().clone();
+        self.visible_entities.insert(entity_id, (position, entity));
+    }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SpatialEvent<E: Entity>{
     from: Point,
     to: Option<Point>,
@@ -175,6 +172,13 @@ pub struct MapDefinition{
 }
 
 impl MapDefinition{
+    fn new(zone_width: usize, map_width_in_zones:usize) -> MapDefinition{
+        MapDefinition{
+            zone_width,
+            map_width_in_zones,
+        }
+    }
+
     pub fn point_is_inside(&self, point: &Point) -> bool {
         self.coord_is_inside(&point.0) && self.coord_is_inside(&point.1)
     }
@@ -237,7 +241,10 @@ fn zone_index_for_point(point: &Point, zone_width: usize) -> usize{
 }
 
 const RANGE_IN_ZONES: usize = 1;
-fn compute_visible_area(zone_width: usize, map_width_in_zones: usize, from_zone: Zone) -> Zone {
+fn compute_visible_area(map_definition: &MapDefinition, from_zone: Zone) -> Zone {
+    let zone_width = map_definition.zone_width;
+    let map_width_in_zones = map_definition.map_width_in_zones;
+
     let mut visible_area_start = from_zone.0;
     let mut visible_area_end = from_zone.1;
 
@@ -273,6 +280,7 @@ mod tests{
     use super::*;
     use futures_sub;
     use futures::{Future, Stream};
+    use futures_sub::FutureSubscriber;
 
     const ZONE_WIDTH: usize = 16;
 
@@ -340,15 +348,15 @@ mod tests{
     #[test]
     pub fn can_compute_visible_area() {
         let zone = Zone(Point(ZONE_WIDTH, ZONE_WIDTH), Point(ZONE_WIDTH*2, ZONE_WIDTH*2));
-        let visible_area = compute_visible_area(ZONE_WIDTH, 3, zone);
+        let visible_area = compute_visible_area(&MapDefinition::new(ZONE_WIDTH, 3), zone);
         assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*3, ZONE_WIDTH*3)), visible_area);
 
         let zone = Zone(Point(ZONE_WIDTH, ZONE_WIDTH), Point(ZONE_WIDTH*2, ZONE_WIDTH*2));
-        let visible_area = compute_visible_area(ZONE_WIDTH, 2, zone);
+        let visible_area = compute_visible_area(&MapDefinition::new(ZONE_WIDTH, 2), zone);
         assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*2, ZONE_WIDTH*2)), visible_area);
 
         let zone = Zone(Point(0, 0), Point(ZONE_WIDTH, ZONE_WIDTH));
-        let visible_area = compute_visible_area(ZONE_WIDTH, 3, zone);
+        let visible_area = compute_visible_area(&MapDefinition::new(ZONE_WIDTH, 3), zone);
         assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*2, ZONE_WIDTH*2)), visible_area);
     }
 
