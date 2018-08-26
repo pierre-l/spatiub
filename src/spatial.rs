@@ -122,7 +122,6 @@ impl <E> ZoneChannel<E> where E: Entity+Clone {
                     }
                 },
                 Err(err) => {
-                    warn!("Subscriber dropped. Cause: {}", err);
                     false
                 }
             }
