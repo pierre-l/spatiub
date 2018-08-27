@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use uuid::Uuid;
 use std::collections::HashMap;
+use std::cell::RefCell;
 
 pub struct SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone {
     map_definition: MapDefinition,
@@ -11,7 +12,7 @@ pub struct SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+
 
 impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone{
     pub fn new(map_definition: MapDefinition)
-        -> SpatialChannel<S, E>
+               -> SpatialChannel<S, E>
     {
         let mut channels = vec![];
 
@@ -24,7 +25,7 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
                 let area_end = Point(area_start.0 + zone_width, area_start.1 + zone_width);
                 let area = Zone(area_start, area_end);
 
-                channels.push(ZoneChannel::new(area, &map_definition));
+                channels.push(ZoneChannel::new(area));
             }
         }
 
@@ -38,18 +39,50 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
         let event = Rc::new(event);
         let zone_width = self.map_definition.zone_width;
 
+        // Publish in the areas that were already in range.
         let mut from_indexes = HashSet::new();
+        let mut entity_subscription_cell: RefCell<Option<S>> = RefCell::new(None);
         compute_indexes_for_zones_in_range(&event.from, zone_width, |index|{
             from_indexes.insert(index);
-            self.publish_if_channel_exists(index, &event);
+
+            if let Some(channel) =  self.channels.get_mut(index) {
+                if let Some(dropped_subscription) = channel.publish(event.clone()) {
+                    entity_subscription_cell.replace(Some(dropped_subscription));
+                }
+            };
         });
 
         if let Some(ref destination) = event.to {
+            // Publish in the areas that are now in range.
             compute_indexes_for_zones_in_range(destination, zone_width, |index|{
-                if !from_indexes.contains(&index) {
-                    self.publish_if_channel_exists(index, &event);
+                if !from_indexes.contains(&index) { // Exclude the zones that were already in range.
+                    if let Some(channel) =  self.channels.get_mut(index) {
+                        if let Some(_dropped_subscription) = channel.publish(event.clone()){
+                            panic!() // No subscription should be dropped in the new areas in visible range.
+                        }
+
+                        if let Some(dropped_subscriber) = entity_subscription_cell.get_mut() {
+                            channel.for_each_entity_in_zone(|entity, position|{
+                                let entity_in_zone_event = SpatialEvent{
+                                    from: position.clone(),
+                                    to: Some(position.clone()),
+                                    acting_entity: entity.clone(),
+                                    is_a_move: false,
+                                };
+
+                                let _res = // Nothing to do if it fails, result is ignored.
+                                    dropped_subscriber.send(Rc::new(entity_in_zone_event));
+                            })
+                        }
+                    }
                 }
             });
+
+            if let Some(dropped_subscriber) = entity_subscription_cell.replace(None) {
+                self.subscribe(dropped_subscriber, destination);
+            } else {
+                // TODO Panic? Requires a change in the API because it means every entity has a matching subscription.
+            }
         }
     }
 
@@ -61,48 +94,40 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
             panic!()
         }
     }
-
-    fn publish_if_channel_exists(&mut self, channel_index: usize, event: &Rc<SpatialEvent<E>>) {
-        let dropped_subscriber_option = if let Some(channel) =  self.channels.get_mut(channel_index) {
-            channel.publish(event.clone())
-        } else {
-            None
-        };
-
-        if let Some(ref destination) = event.to {
-            if let Some(dropped_entity_subscriber) = dropped_subscriber_option{
-                if self.map_definition.point_is_inside(destination) {
-                    self.subscribe(dropped_entity_subscriber, destination);
-                }
-            }
-        }
-    }
 }
 
 pub struct ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone{
-    visible_area: Zone,
+    area: Zone,
     subscribers: Vec<S>,
-    visible_entities: HashMap<Uuid, (Point, E)>,
+    entities_in_zone: HashMap<Uuid, (Point, E)>,
 }
 
 impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone {
-    pub fn new(area: Zone, map_definition: &MapDefinition) -> ZoneChannel<S, E> {
-        let visible_area = compute_visible_area(map_definition, area);
+    pub fn new(area: Zone) -> ZoneChannel<S, E> {
         ZoneChannel{
-            visible_area,
+            area,
             subscribers: vec![],
-            visible_entities: HashMap::new(),
+            entities_in_zone: HashMap::new(),
         }
     }
 
     pub fn subscribe(&mut self, subscriber: S) {
-        for (position, entity) in self.visible_entities.values(){
-            subscriber.send(Rc::new(SpatialEvent{
+        for (position, entity) in self.entities_in_zone.values(){
+            match subscriber.send(Rc::new(SpatialEvent{
                 from: position.clone(),
                 to: Some(position.clone()),
                 acting_entity: entity.clone(),
                 is_a_move: false,
-            }));
+            })) {
+                Ok(keep) => {
+                    if !keep {
+                        panic!("This is not an expected behavior to subscribe with an subscriber that drops immediately.")
+                    }
+                },
+                Err(err) => {
+                    panic!("The subscriber should still be valid when subscribing. Cause: {}", err)
+                }
+            }
         }
 
         self.subscribers.push(subscriber);
@@ -111,13 +136,35 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
     pub fn publish(&mut self, event: Rc<SpatialEvent<E>>) -> Option<S>{
         self.process_entity_move(&event);
 
-        let mut dropped_subscriber_option = None;
+        let leaves_the_zone = if event.is_a_move {
+            if self.area.point_is_in(&event.from){
+                if let Some(ref destination) = &event.to {
+                    if self.area.point_is_not_in(destination) {
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    true
+                }
+            } else {
+                if let Some(ref _destination) = &event.to {
+                    false
+                } else {
+                    false
+                }
+            }
+        } else {
+            false
+        };
 
+        let mut dropped_subscriber_option = None;
         self.subscribers.retain(|subscriber|{
             match subscriber.send(event.clone()) {
                 Ok(retain) => {
-                    if event.is_a_move && subscriber.entity_id() == event.acting_entity.id() {
+                    if leaves_the_zone && subscriber.entity_id() == event.acting_entity.id() {
                         dropped_subscriber_option = Some(subscriber.clone());
+
                         false
                     } else {
                         retain
@@ -134,18 +181,18 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
 
     fn process_entity_move(&mut self, event: &Rc<SpatialEvent<E>>) {
         if event.is_a_move {
-            if self.visible_area.point_is_in(&event.from) {
+            if self.area.point_is_in(&event.from) {
                 if let Some(ref destination) = event.to {
-                    if self.visible_area.point_is_in(&destination) {
+                    if self.area.point_is_in(&destination) {
                         self.insert_entity(event.acting_entity.clone(), destination.clone());
                     } else {
-                        self.visible_entities.remove(event.acting_entity.id());
+                        self.entities_in_zone.remove(event.acting_entity.id());
                     }
                 } else {
-                    self.visible_entities.remove(event.acting_entity.id());
+                    self.entities_in_zone.remove(event.acting_entity.id());
                 }
             } else if let Some(ref destination) = event.to {
-                if self.visible_area.point_is_in(&destination) {
+                if self.area.point_is_in(&destination) {
                     self.insert_entity(event.acting_entity.clone(), destination.clone());
                 }
             }
@@ -154,7 +201,14 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
 
     fn insert_entity(&mut self, entity: E, position: Point) {
         let entity_id = entity.id().clone();
-        self.visible_entities.insert(entity_id, (position, entity));
+        self.entities_in_zone.insert(entity_id, (position, entity));
+    }
+
+    fn for_each_entity_in_zone<C>(&mut self, consumer: C) where C: Fn(&mut E, &Point) {
+        self.entities_in_zone.retain(|_id, (position, entity)|{
+            consumer(entity, position);
+            true
+        })
     }
 }
 
@@ -191,7 +245,7 @@ impl MapDefinition{
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct Point(usize, usize);
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct Zone(Point, Point);
 
 impl Zone{
@@ -228,7 +282,7 @@ fn compute_indexes_for_zones_in_range<F>(
 
     for x_offset in 0..x_offset_max{
         for y_offset in 0..y_offset_max{
-            let channel_index = (start_x + x_offset) + (start_y + y_offset) * zone_width;
+            let channel_index = (start_x + x_offset) * zone_width + (start_y + y_offset);
             consumer(channel_index);
         }
     }
@@ -237,7 +291,7 @@ fn compute_indexes_for_zones_in_range<F>(
 fn zone_index_for_point(point: &Point, zone_width: usize) -> usize{
     let x = point.0 / zone_width ;
     let y = point.1 / zone_width;
-    x + y * zone_width
+    x * zone_width + y
 }
 
 const RANGE_IN_ZONES: usize = 1;
@@ -281,6 +335,7 @@ mod tests{
     use futures_sub;
     use futures::{Future, Stream};
     use futures_sub::FutureSubscriber;
+    use std::iter::FromIterator;
 
     const ZONE_WIDTH: usize = 16;
 
@@ -314,6 +369,7 @@ mod tests{
 
         for _i in 0..ZONE_WIDTH * 10 {
             let destination = Point(position.0 + 1, position.1);
+            error!("Position: {:?}, destination {:?}", position, destination);
 
             channel.publish(SpatialEvent{
                 from: position,
@@ -358,6 +414,31 @@ mod tests{
         let zone = Zone(Point(0, 0), Point(ZONE_WIDTH, ZONE_WIDTH));
         let visible_area = compute_visible_area(&MapDefinition::new(ZONE_WIDTH, 3), zone);
         assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*2, ZONE_WIDTH*2)), visible_area);
+    }
+
+    #[test]
+    pub fn can_compute_indexes_for_zones_in_range(){
+        let expected = HashSet::from_iter(vec![
+            0, 1, ZONE_WIDTH, ZONE_WIDTH +1,
+        ]);
+
+        let mut found = HashSet::new();
+        compute_indexes_for_zones_in_range(&Point(0, 0), ZONE_WIDTH, |index|{
+            found.insert(index);
+        });
+
+        assert_eq!(expected, found);
+
+        let expected = HashSet::from_iter(vec![
+            0, 1, ZONE_WIDTH, ZONE_WIDTH +1,
+        ]);
+
+        let mut found = HashSet::new();
+        compute_indexes_for_zones_in_range(&Point(16, 0), ZONE_WIDTH, |index|{
+            found.insert(index);
+        });
+
+        assert_eq!(expected, found);
     }
 
     #[test]
