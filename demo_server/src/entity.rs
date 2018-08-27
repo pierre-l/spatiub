@@ -3,7 +3,7 @@ use spatiub::spatial::Entity;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DemoEntity{
-    id: Uuid,
+    pub id: Uuid,
 }
 
 impl Entity for DemoEntity{
