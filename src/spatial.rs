@@ -223,13 +223,6 @@ pub struct MapDefinition{
 }
 
 impl MapDefinition{
-    fn new(zone_width: usize, map_width_in_zones:usize) -> MapDefinition{
-        MapDefinition{
-            zone_width,
-            map_width_in_zones,
-        }
-    }
-
     pub fn point_is_inside(&self, point: &Point) -> bool {
         self.coord_is_inside(&point.0) && self.coord_is_inside(&point.1)
     }
@@ -290,41 +283,6 @@ fn zone_index_for_point(point: &Point, map_definition: &MapDefinition) -> usize{
     let x = point.0 / map_definition.zone_width ;
     let y = point.1 / map_definition.zone_width;
     x * map_definition.map_width_in_zones + y
-}
-
-const RANGE_IN_ZONES: usize = 1;
-fn compute_visible_area(map_definition: &MapDefinition, from_zone: Zone) -> Zone {
-    let zone_width = map_definition.zone_width;
-    let map_width_in_zones = map_definition.map_width_in_zones;
-
-    let mut visible_area_start = from_zone.0;
-    let mut visible_area_end = from_zone.1;
-
-    visible_area_start.0 = if visible_area_start.0 >= zone_width {
-        visible_area_start.0 - zone_width * RANGE_IN_ZONES
-    } else {
-        visible_area_start.0
-    };
-
-    visible_area_start.1 = if visible_area_start.1 >= zone_width {
-        visible_area_start.1 - zone_width * RANGE_IN_ZONES
-    } else {
-        visible_area_start.1
-    };
-
-    visible_area_end.0 = if visible_area_end.0 / zone_width < map_width_in_zones {
-        visible_area_end.0 + zone_width * RANGE_IN_ZONES
-    } else {
-        visible_area_end.0
-    };
-
-    visible_area_end.1 = if visible_area_end.1 / zone_width < map_width_in_zones {
-        visible_area_end.1 + zone_width * RANGE_IN_ZONES
-    } else {
-        visible_area_end.1
-    };
-
-    Zone(visible_area_start, visible_area_end)
 }
 
 #[cfg(test)]
@@ -397,21 +355,6 @@ mod tests{
         assert!(zone.point_is_not_in(&Point(ZONE_WIDTH-1, ZONE_WIDTH)));
         assert!(zone.point_is_not_in(&Point(ZONE_WIDTH, ZONE_WIDTH-1)));
         assert!(zone.point_is_not_in(&Point(0, 0)));
-    }
-
-    #[test]
-    pub fn can_compute_visible_area() {
-        let zone = Zone(Point(ZONE_WIDTH, ZONE_WIDTH), Point(ZONE_WIDTH*2, ZONE_WIDTH*2));
-        let visible_area = compute_visible_area(&MapDefinition::new(ZONE_WIDTH, 3), zone);
-        assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*3, ZONE_WIDTH*3)), visible_area);
-
-        let zone = Zone(Point(ZONE_WIDTH, ZONE_WIDTH), Point(ZONE_WIDTH*2, ZONE_WIDTH*2));
-        let visible_area = compute_visible_area(&MapDefinition::new(ZONE_WIDTH, 2), zone);
-        assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*2, ZONE_WIDTH*2)), visible_area);
-
-        let zone = Zone(Point(0, 0), Point(ZONE_WIDTH, ZONE_WIDTH));
-        let visible_area = compute_visible_area(&MapDefinition::new(ZONE_WIDTH, 3), zone);
-        assert_eq!(Zone(Point(0, 0), Point(ZONE_WIDTH*2, ZONE_WIDTH*2)), visible_area);
     }
 
     #[test]
