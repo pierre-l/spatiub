@@ -36,13 +36,15 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
     }
 
     pub fn publish(&mut self, event: SpatialEvent<E>) {
+        debug!("Publishing {}: {:?} => {:?}", event.acting_entity.id(), event.from, event.to);
         let event = Rc::new(event);
         let zone_width = self.map_definition.zone_width;
+        let map_width_in_zones = self.map_definition.map_width_in_zones;
 
         // Publish in the areas that were already in range.
         let mut from_indexes = HashSet::new();
         let mut entity_subscription_cell: RefCell<Option<S>> = RefCell::new(None);
-        compute_indexes_for_zones_in_range(&event.from, zone_width, |index|{
+        compute_indexes_for_zones_in_range(&event.from, zone_width, map_width_in_zones, |index|{
             from_indexes.insert(index);
 
             if let Some(channel) =  self.channels.get_mut(index) {
@@ -54,7 +56,7 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
 
         if let Some(ref destination) = event.to {
             // Publish in the areas that are now in range.
-            compute_indexes_for_zones_in_range(destination, zone_width, |index|{
+            compute_indexes_for_zones_in_range(destination, zone_width, map_width_in_zones, |index|{
                 if !from_indexes.contains(&index) { // Exclude the zones that were already in range.
                     if let Some(channel) =  self.channels.get_mut(index) {
                         if let Some(_dropped_subscription) = channel.publish(event.clone()){
@@ -91,7 +93,7 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
     }
 
     pub fn do_subscribe(&mut self, subscriber: S, position: &Point, warn_of_entities_in_zone: bool) {
-        let zone_index = zone_index_for_point(position, self.map_definition.zone_width);
+        let zone_index = zone_index_for_point(position, &self.map_definition);
         if let Some(channel) = self.channels.get_mut(zone_index) {
             channel.subscribe(subscriber, warn_of_entities_in_zone);
         } else {
@@ -136,6 +138,7 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
             }
         }
 
+        debug!("Entity {} subscribing to zone {:?}", subscriber.entity_id(), self.area);
         self.subscribers.push(subscriber);
     }
 
@@ -167,6 +170,10 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
         } else {
             false
         };
+
+        if leaves_the_zone {
+            debug!("Entity {} leaving zone {:?}", event.acting_entity.id(), self.area);
+        }
 
         let mut dropped_subscriber_option = None;
         self.subscribers.retain(|subscriber|{
@@ -204,15 +211,15 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
 
 #[derive(Debug, Clone)]
 pub struct SpatialEvent<E: Entity>{
-    from: Point,
-    to: Option<Point>,
-    acting_entity: E,
-    is_a_move: bool,
+    pub from: Point,
+    pub to: Option<Point>,
+    pub acting_entity: E,
+    pub is_a_move: bool,
 }
 
 pub struct MapDefinition{
-    zone_width: usize,
-    map_width_in_zones: usize
+    pub zone_width: usize,
+    pub map_width_in_zones: usize
 }
 
 impl MapDefinition{
@@ -233,7 +240,7 @@ impl MapDefinition{
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
-pub struct Point(usize, usize);
+pub struct Point(pub usize, pub usize);
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct Zone(Point, Point);
@@ -256,6 +263,7 @@ pub trait Entity {
 fn compute_indexes_for_zones_in_range<F>(
     point: &Point,
     zone_width: usize,
+    map_width_in_zones: usize,
     mut consumer: F
 ) where F: FnMut(usize) {
     let (start_x, x_offset_max) = if point.0 > zone_width {
@@ -272,16 +280,16 @@ fn compute_indexes_for_zones_in_range<F>(
 
     for x_offset in 0..x_offset_max{
         for y_offset in 0..y_offset_max{
-            let channel_index = (start_x + x_offset) * zone_width + (start_y + y_offset);
+            let channel_index = (start_x + x_offset) * map_width_in_zones + (start_y + y_offset);
             consumer(channel_index);
         }
     }
 }
 
-fn zone_index_for_point(point: &Point, zone_width: usize) -> usize{
-    let x = point.0 / zone_width ;
-    let y = point.1 / zone_width;
-    x * zone_width + y
+fn zone_index_for_point(point: &Point, map_definition: &MapDefinition) -> usize{
+    let x = point.0 / map_definition.zone_width ;
+    let y = point.1 / map_definition.zone_width;
+    x * map_definition.map_width_in_zones + y
 }
 
 const RANGE_IN_ZONES: usize = 1;
@@ -328,6 +336,7 @@ mod tests{
     use std::iter::FromIterator;
 
     const ZONE_WIDTH: usize = 16;
+    const MAP_WIDTH_IN_ZONES: usize = 16;
 
     #[test]
     pub fn can_subscribe(){
@@ -412,7 +421,7 @@ mod tests{
         ]);
 
         let mut found = HashSet::new();
-        compute_indexes_for_zones_in_range(&Point(0, 0), ZONE_WIDTH, |index|{
+        compute_indexes_for_zones_in_range(&Point(0, 0), ZONE_WIDTH, MAP_WIDTH_IN_ZONES, |index|{
             found.insert(index);
         });
 
@@ -423,7 +432,7 @@ mod tests{
         ]);
 
         let mut found = HashSet::new();
-        compute_indexes_for_zones_in_range(&Point(16, 0), ZONE_WIDTH, |index|{
+        compute_indexes_for_zones_in_range(&Point(16, 0), ZONE_WIDTH, MAP_WIDTH_IN_ZONES, |index|{
             found.insert(index);
         });
 
