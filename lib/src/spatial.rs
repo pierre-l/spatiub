@@ -83,7 +83,7 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
             if let Some(dropped_subscriber) = entity_subscription_cell.replace(None) {
                 self.do_subscribe(dropped_subscriber, destination, false);
             } else {
-                // TODO Panic? Requires a change in the API because it means every entity has a matching subscription.
+                // TODO Panic? Requires a change in the API because it means every entity.rs has a matching subscription.
             }
         }
     }
@@ -209,7 +209,7 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SpatialEvent<E: Entity>{
     pub from: Point,
     pub to: Option<Point>,
@@ -232,7 +232,7 @@ impl MapDefinition{
     }
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Clone)]
 pub struct Point(pub usize, pub usize);
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
