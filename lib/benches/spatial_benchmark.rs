@@ -1,7 +1,5 @@
 #[macro_use] extern crate criterion;
-extern crate env_logger;
 extern crate futures;
-#[macro_use] extern crate log;
 extern crate uuid;
 extern crate spatiub;
 
@@ -16,7 +14,6 @@ use spatiub::futures_sub;
 use spatiub::spatial::Point;
 use spatiub::spatial::SpatialEvent;
 use spatiub::spatial::Entity;
-use log::LevelFilter;
 
 const ZONE_WIDTH: usize = 16;
 fn bench_sending(c: &mut Criterion) {
@@ -33,7 +30,7 @@ fn bench_sending(c: &mut Criterion) {
         let entity_id = Uuid::new_v4();
 
         b.iter(|| {
-            let (subscriber, mut receiver) = futures_sub::new_subscriber(entity_id);
+            let (subscriber, receiver) = futures_sub::new_subscriber(entity_id);
 
             let number_of_events = 1000;
             let mut position = Point(0, 0);
@@ -63,10 +60,10 @@ fn bench_sending(c: &mut Criterion) {
             let mut number_of_events_left = number_of_events;
 
             let stream = receiver
-                .map_err(|err|{
+                .map_err(|_err|{
                     EndOfStream::Unexpected
                 })
-                .for_each(|event|{
+                .for_each(|_event|{
                 number_of_events_left -= 1;
                 if number_of_events_left > 1 {
                     future::ok(())
