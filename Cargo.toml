@@ -1,17 +1,6 @@
-[package]
-name = "spatiub"
-version = "0.1.0"
-authors = ["pierre-l <pierre.larger@gmail.com>"]
+[workspace]
 
-[dependencies]
-futures = "0.1.23"
-env_logger = "0.5.12"
-log = "0.4.3"
-uuid = { version = "0.6.5", features = ["v4"] }
-
-[dev-dependencies]
-criterion = "0.2"
-
-[[bench]]
-name = "spatial_benchmark"
-harness = false
+members = [
+    "lib",
+    "demo_server",
+]

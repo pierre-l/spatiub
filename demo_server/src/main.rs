@@ -6,10 +6,6 @@ extern crate uuid;
 
 use std::error::Error;
 
-mod pub_sub;
-mod futures_sub;
-mod spatial;
-
 fn main() -> Result<(), Box<Error>> {
     println!("Hello, world!");
     Ok(())
