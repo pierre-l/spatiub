@@ -79,7 +79,7 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
             });
 
             if let Some(dropped_subscriber) = entity_subscription_cell.replace(None) {
-                self.subscribe(dropped_subscriber, destination);
+                self.do_subscribe(dropped_subscriber, destination, false);
             } else {
                 // TODO Panic? Requires a change in the API because it means every entity has a matching subscription.
             }
@@ -87,9 +87,13 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
     }
 
     pub fn subscribe(&mut self, subscriber: S, position: &Point) {
+        self.do_subscribe(subscriber, position, true);
+    }
+
+    pub fn do_subscribe(&mut self, subscriber: S, position: &Point, warn_of_entities_in_zone: bool) {
         let zone_index = zone_index_for_point(position, self.map_definition.zone_width);
         if let Some(channel) = self.channels.get_mut(zone_index) {
-            channel.subscribe(subscriber);
+            channel.subscribe(subscriber, warn_of_entities_in_zone);
         } else {
             panic!()
         }
@@ -111,21 +115,23 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
         }
     }
 
-    pub fn subscribe(&mut self, subscriber: S) {
-        for (position, entity) in self.entities_in_zone.values(){
-            match subscriber.send(Rc::new(SpatialEvent{
-                from: position.clone(),
-                to: Some(position.clone()),
-                acting_entity: entity.clone(),
-                is_a_move: false,
-            })) {
-                Ok(keep) => {
-                    if !keep {
-                        panic!("This is not an expected behavior to subscribe with an subscriber that drops immediately.")
+    pub fn subscribe(&mut self, subscriber: S, warn_of_entities_in_zone: bool) {
+        if warn_of_entities_in_zone{
+            for (position, entity) in self.entities_in_zone.values(){
+                match subscriber.send(Rc::new(SpatialEvent{
+                    from: position.clone(),
+                    to: Some(position.clone()),
+                    acting_entity: entity.clone(),
+                    is_a_move: false,
+                })) {
+                    Ok(keep) => {
+                        if !keep {
+                            panic!("This is not an expected behavior to subscribe with an subscriber that drops immediately.")
+                        }
+                    },
+                    Err(err) => {
+                        panic!("The subscriber should still be valid when subscribing. Cause: {}", err)
                     }
-                },
-                Err(err) => {
-                    panic!("The subscriber should still be valid when subscribing. Cause: {}", err)
                 }
             }
         }
@@ -134,21 +140,25 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
     }
 
     pub fn publish(&mut self, event: Rc<SpatialEvent<E>>) -> Option<S>{
-        self.process_entity_move(&event);
-
         let leaves_the_zone = if event.is_a_move {
             if self.area.point_is_in(&event.from){
                 if let Some(ref destination) = &event.to {
                     if self.area.point_is_not_in(destination) {
+                        self.entities_in_zone.remove(event.acting_entity.id());
                         true
                     } else {
+                        self.insert_entity(event.acting_entity.clone(), destination.clone());
                         false
                     }
                 } else {
+                    self.entities_in_zone.remove(event.acting_entity.id());
                     true
                 }
             } else {
-                if let Some(ref _destination) = &event.to {
+                if let Some(ref destination) = &event.to {
+                    if self.area.point_is_in(destination) {
+                        self.insert_entity(event.acting_entity.clone(), destination.clone());
+                    }
                     false
                 } else {
                     false
@@ -177,26 +187,6 @@ impl <S, E> ZoneChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Cl
         });
 
         dropped_subscriber_option
-    }
-
-    fn process_entity_move(&mut self, event: &Rc<SpatialEvent<E>>) {
-        if event.is_a_move {
-            if self.area.point_is_in(&event.from) {
-                if let Some(ref destination) = event.to {
-                    if self.area.point_is_in(&destination) {
-                        self.insert_entity(event.acting_entity.clone(), destination.clone());
-                    } else {
-                        self.entities_in_zone.remove(event.acting_entity.id());
-                    }
-                } else {
-                    self.entities_in_zone.remove(event.acting_entity.id());
-                }
-            } else if let Some(ref destination) = event.to {
-                if self.area.point_is_in(&destination) {
-                    self.insert_entity(event.acting_entity.clone(), destination.clone());
-                }
-            }
-        }
     }
 
     fn insert_entity(&mut self, entity: E, position: Point) {
@@ -250,8 +240,8 @@ pub struct Zone(Point, Point);
 
 impl Zone{
     fn point_is_in(&self, point: &Point) -> bool {
-        (self.0).0 <= point.0 && (self.0).1 <= point.1
-            && (self.1).0 > point.0 && (self.1).1 > point.1
+        point.0 >= (self.0).0 && point.1 >= (self.0).1
+            && point.0 < (self.1).0 && point.1 < (self.1).1
     }
 
     fn point_is_not_in(&self, point: &Point) -> bool {
@@ -332,9 +322,9 @@ fn compute_visible_area(map_definition: &MapDefinition, from_zone: Zone) -> Zone
 #[cfg(test)]
 mod tests{
     use super::*;
-    use futures_sub;
-    use futures::{Future, Stream};
-    use futures_sub::FutureSubscriber;
+    use env_logger;
+    use pub_sub::PubSubError;
+    use std::sync::Mutex;
     use std::iter::FromIterator;
 
     const ZONE_WIDTH: usize = 16;
@@ -355,6 +345,7 @@ mod tests{
 
     #[test]
     pub fn subscription_follows_moving_entity() {
+        env_logger::init();
         let mut channel = test_channel();
 
         let entity_id = Uuid::new_v4();
@@ -362,14 +353,14 @@ mod tests{
             id: entity_id.clone(),
         };
 
-        let (subscriber, mut receiver) = futures_sub::new_subscriber(entity_id);
+        let subscriber = CountingSubscriber::new(entity_id);
 
         let mut position = Point(0, 0);
-        channel.subscribe(subscriber, &position);
+        channel.subscribe(subscriber.clone(), &position);
 
-        for _i in 0..ZONE_WIDTH * 10 {
+        let number_of_events = ZONE_WIDTH * 10;
+        for _i in 0..number_of_events {
             let destination = Point(position.0 + 1, position.1);
-            error!("Position: {:?}, destination {:?}", position, destination);
 
             channel.publish(SpatialEvent{
                 from: position,
@@ -378,12 +369,10 @@ mod tests{
                 is_a_move: true,
             });
 
-            let (received_event_option, receiver_tmp) = receiver.into_future().wait().ok().unwrap();
-            receiver = receiver_tmp;
-
-            assert!(received_event_option.is_some());
             position = destination;
         }
+
+        assert_eq!(number_of_events, subscriber.number_of_events_received());
     }
 
     #[test]
@@ -447,10 +436,10 @@ mod tests{
 
         channel.publish(event(0, 0, 1, 0));
 
-        let (subscriber, receiver) = futures_sub::new_subscriber(Uuid::new_v4());
-        channel.subscribe(subscriber, &Point(0, 0));
-        let (received_event_option, _receiver) = receiver.into_future().wait().ok().unwrap();
-        assert!(received_event_option.is_some());
+        let subscriber = CountingSubscriber::new(Uuid::new_v4());
+        channel.subscribe(subscriber.clone(), &Point(0, 0));
+
+        assert_eq!(1, subscriber.number_of_events_received());
     }
 
     #[test]
@@ -461,8 +450,8 @@ mod tests{
 
         let entity_id = Uuid::new_v4();
         let entity_position = Point(ZONE_WIDTH - 1, ZONE_WIDTH - 1);
-        let (subscriber, receiver) = futures_sub::new_subscriber(entity_id.clone());
-        channel.subscribe(subscriber, &entity_position);
+        let subscriber = CountingSubscriber::new(entity_id.clone());
+        channel.subscribe(subscriber.clone(), &entity_position);
 
         channel.publish(SpatialEvent{
             to: Some(Point(entity_position.0 + 1, entity_position.1)),
@@ -473,21 +462,19 @@ mod tests{
             is_a_move: true,
         });
 
-        let (_, receiver_rest) = receiver.into_future().wait().ok().unwrap();
-        let (received_event_option, _receiver_rest) = receiver_rest.into_future().wait().ok().unwrap();
-        assert!(received_event_option.is_some());
+        assert_eq!(2, subscriber.number_of_events_received());
     }
 
     fn assert_can_subscribe(subscription_point: &Point, event: SpatialEvent<TestEntity>) {
         let mut channel = test_channel();
-        let (subscriber, receiver) = futures_sub::new_subscriber(Uuid::new_v4());
-        channel.subscribe(subscriber, subscription_point);
+        let subscriber = CountingSubscriber::new(Uuid::new_v4());
+        channel.subscribe(subscriber.clone(), subscription_point);
         channel.publish(event);
-        let (received_event_option, _receiver) = receiver.into_future().wait().ok().unwrap();
-        assert!(received_event_option.is_some());
+
+        assert_eq!(1, subscriber.number_of_events_received())
     }
 
-    fn test_channel() -> SpatialChannel<FutureSubscriber<SpatialEvent<TestEntity>>, TestEntity> {
+    fn test_channel() -> SpatialChannel<CountingSubscriber, TestEntity> {
         SpatialChannel::new(
             MapDefinition {
                 zone_width: ZONE_WIDTH,
@@ -515,6 +502,48 @@ mod tests{
     impl Entity for TestEntity{
         fn id(&self) -> &Uuid {
             &self.id
+        }
+    }
+
+    #[derive(Clone)]
+    struct CountingSubscriber{
+        entity_id: Uuid,
+        number_of_events_received: Rc<Mutex<usize>>,
+    }
+
+    impl CountingSubscriber{
+        pub fn new(entity_id: Uuid) -> CountingSubscriber{
+            CountingSubscriber{
+                entity_id,
+                number_of_events_received: Rc::new(Mutex::new(0)),
+            }
+        }
+
+        fn number_of_events_received(&self) -> usize {
+            match self.number_of_events_received.lock(){
+                Ok(number) => {
+                    *number
+                },
+                Err(_err) => panic!()
+            }
+        }
+    }
+
+    impl Subscriber<SpatialEvent<TestEntity>> for CountingSubscriber{
+        fn send(&self, _event: Rc<SpatialEvent<TestEntity>>) -> Result<bool, PubSubError> {
+            match self.number_of_events_received.lock(){
+                Ok(mut number) => {
+                    *number += 1
+                },
+                Err(_err) => {
+                    panic!()
+                }
+            }
+            Ok(true)
+        }
+
+        fn entity_id(&self) -> &Uuid {
+            &self.entity_id
         }
     }
 }
