@@ -1,3 +1,4 @@
+extern crate bytes;
 extern crate bincode;
 extern crate core;
 extern crate env_logger;
@@ -7,8 +8,10 @@ extern crate serde;
 #[macro_use]extern crate serde_derive;
 extern crate uuid;
 extern crate spatiub;
+extern crate tokio;
 
 mod entity;
+mod network;
 
 use std::error::Error;
 use log::LevelFilter;
@@ -43,7 +46,7 @@ fn main() -> Result<(), Box<Error>> {
 
     let position = Point(0, 0);
 
-    let (subscriber, receiver) = futures_sub::new_subscriber(entity.id().clone());
+    let (subscriber, _receiver) = futures_sub::new_subscriber(entity.id().clone());
 
     channel.subscribe(subscriber, &position);
 
