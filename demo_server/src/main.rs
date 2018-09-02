@@ -19,6 +19,7 @@ use message::Message;
 use spatiub::spatial::SpatialEvent;
 use spatiub::spatial::Point;
 use tokio::runtime::current_thread::Runtime;
+use entity::Timestamp;
 
 mod entity;
 mod codec;
@@ -44,11 +45,14 @@ fn main() {
     });
 
     thread::sleep(Duration::from_millis(100));
+
     let client_future = client::client(&addr, |message|{
         info!("Message received: {:?}", message);
 
         match message {
-            Message::ConnectionAck(entity) => {
+            Message::ConnectionAck(mut entity) => {
+                entity.last_state_update = Timestamp::new();
+
                 let event = Message::Event(SpatialEvent {
                     from: Point(0, 0),
                     to: Some(Point(1, 0)),
@@ -58,8 +62,10 @@ fn main() {
                 Ok(Some(event))
             },
             Message::Event(event) => {
-                if let Some(Point(1, 0)) = event.to{
-                    info!("Stopping the client");
+                if event.to.is_some(){
+                    let latency = event.acting_entity.last_state_update.elapsed();
+                    info!("Latency: {}", latency.subsec_nanos());
+
                     Err(())
                 } else {
                     Ok(None)

@@ -19,6 +19,7 @@ use futures::unsync::mpsc::UnboundedReceiver;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::net::SocketAddr;
+use entity::Timestamp;
 
 type Event = SpatialEvent<DemoEntity>;
 type SpatialChannelCell = RefCell<SpatialChannel<FutureSubscriber<Event>, DemoEntity>>;
@@ -35,6 +36,7 @@ pub fn server(addr: &SocketAddr) {
 
         let entity = DemoEntity{
             id: Uuid::new_v4(),
+            last_state_update: Timestamp::new(),
         };
 
         let (subscriber, subscription) = futures_sub::new_subscriber(entity.id().clone());
