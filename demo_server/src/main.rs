@@ -47,10 +47,9 @@ fn main() {
     thread::sleep(Duration::from_millis(100));
 
     let client_future = client::client(&addr, |message|{
-        info!("Message received: {:?}", message);
-
-        match message {
-            Message::ConnectionAck(mut entity) => {
+        let result = match &message {
+            Message::ConnectionAck(entity) => {
+                let mut entity = entity.clone();
                 entity.last_state_update = Timestamp::new();
 
                 let event = Message::Event(SpatialEvent {
@@ -71,7 +70,10 @@ fn main() {
                     Ok(None)
                 }
             },
-        }
+        };
+
+        info!("Message received: {:?}", message);
+        result
     });
 
     let mut runtime = Runtime::new().unwrap();
