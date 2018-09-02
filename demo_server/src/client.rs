@@ -1,5 +1,4 @@
-use futures::{future, Future, Stream, Sink};
-use futures::unsync::mpsc;
+use futures::{Future, Stream, Sink};
 use message::Message;
 use server::codec;
 use std::net::SocketAddr;
@@ -17,43 +16,41 @@ pub fn run_client(addr: &SocketAddr,){
         .and_then(move |socket| {
             info!("Connection established");
             let (output, input) = codec().framed(socket).split();
-            let output = output.sink_map_err(|err|{
-                error!("An error occurred in the input stream: {}", err)
-            });
-
-            let (output_sink, output_stream) = mpsc::unbounded();
-            let output = output_stream
-                .forward(output);
+            let output = output.sink_map_err(|err| error!("An error occurred in the input stream: {}", err));
 
             input
-                .map_err(|err|{
-                    error!("An error occurred in the input stream: {}", err)
-                })
-                .for_each(move |message|{
-                info!("Message received: {:?}", message);
+                .map_err(|err| error!("An error occurred in the input stream: {}", err))
+                .then(move |result|{
+                    match result {
+                        Ok(message) => {
+                            info!("Message received: {:?}", message);
 
-                match message {
-                    Message::ConnectionAck(entity) => {
-                        output_sink.unbounded_send(Message::Event(SpatialEvent{
-                            from: Point(0, 0),
-                            to: Some(Point(1, 0)),
-                            acting_entity: entity,
-                            is_a_move: true,
-                        })).unwrap();
-                        future::ok(())
-                    },
-                    Message::Event(event) => {
-                        if let Some(Point(1, 0)) = event.to{
-                            info!("Stopping the client.");
-                            future::err(())
-                        } else {
-                            future::ok(())
+                            match message {
+                                Message::ConnectionAck(entity) => {
+                                    let event = Message::Event(SpatialEvent {
+                                        from: Point(0, 0),
+                                        to: Some(Point(1, 0)),
+                                        acting_entity: entity,
+                                        is_a_move: true,
+                                    });
+                                    Ok(Some(event))
+                                },
+                                Message::Event(event) => {
+                                    if let Some(Point(1, 0)) = event.to{
+                                        info!("Stopping the client.");
+                                        Err(())
+                                    } else {
+                                        Ok(None)
+                                    }
+                                },
+                            }
                         }
+                        Err(err) => Err(err),
                     }
-                }
 
-            })
-                .join(output)
+                })
+                .filter_map(|message| message)
+                .forward(output)
         });
 
     let mut runtime = Runtime::new().unwrap();
