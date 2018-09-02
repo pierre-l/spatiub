@@ -1,14 +1,14 @@
 use futures::{Future, Stream, Sink};
-use message::Message;
 use server::codec;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::runtime::current_thread::Runtime;
 use tokio_codec::Decoder;
-use spatiub::spatial::SpatialEvent;
-use spatiub::spatial::Point;
+use message::Message;
 
-pub fn run_client(addr: &SocketAddr,){
+pub fn run_client<F>(addr: &SocketAddr, message_consumer: F)
+    where F: Fn(Message) -> Result<Option<Message>, ()>
+{
     let client_future = TcpStream::connect(&addr)
         .map_err(|err|{
             panic!("Connection failed. Cause: {}", err)
@@ -23,31 +23,10 @@ pub fn run_client(addr: &SocketAddr,){
                 .then(move |result|{
                     match result {
                         Ok(message) => {
-                            info!("Message received: {:?}", message);
-
-                            match message {
-                                Message::ConnectionAck(entity) => {
-                                    let event = Message::Event(SpatialEvent {
-                                        from: Point(0, 0),
-                                        to: Some(Point(1, 0)),
-                                        acting_entity: entity,
-                                        is_a_move: true,
-                                    });
-                                    Ok(Some(event))
-                                },
-                                Message::Event(event) => {
-                                    if let Some(Point(1, 0)) = event.to{
-                                        info!("Stopping the client");
-                                        Err(())
-                                    } else {
-                                        Ok(None)
-                                    }
-                                },
-                            }
+                            message_consumer(message)
                         }
                         Err(err) => Err(err),
                     }
-
                 })
                 .filter_map(|message| message)
                 .forward(output)
