@@ -79,6 +79,8 @@ pub fn server(addr: &SocketAddr) {
     ;
 
     runtime.block_on(server).unwrap();
+
+    info!("Server stopped");
 }
 
 fn channel() -> SpatialChannel<FutureSubscriber<SpatialEvent<DemoEntity>>, DemoEntity> {

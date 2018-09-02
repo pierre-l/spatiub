@@ -37,7 +37,7 @@ pub fn run_client(addr: &SocketAddr,){
                                 },
                                 Message::Event(event) => {
                                     if let Some(Point(1, 0)) = event.to{
-                                        info!("Stopping the client.");
+                                        info!("Stopping the client");
                                         Err(())
                                     } else {
                                         Ok(None)
