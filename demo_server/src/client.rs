@@ -2,14 +2,14 @@ use futures::{Future, Stream, Sink};
 use server::codec;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
-use tokio::runtime::current_thread::Runtime;
 use tokio_codec::Decoder;
 use message::Message;
 
-pub fn run_client<F>(addr: &SocketAddr, message_consumer: F)
+pub fn client<F>(addr: &SocketAddr, message_consumer: F)
+    -> impl Future<Item=(), Error=()>
     where F: Fn(Message) -> Result<Option<Message>, ()>
 {
-    let client_future = TcpStream::connect(&addr)
+    TcpStream::connect(&addr)
         .map_err(|err|{
             panic!("Connection failed. Cause: {}", err)
         })
@@ -30,10 +30,6 @@ pub fn run_client<F>(addr: &SocketAddr, message_consumer: F)
                 })
                 .filter_map(|message| message)
                 .forward(output)
-        });
-
-    let mut runtime = Runtime::new().unwrap();
-    if let Err(_err) = runtime.block_on(client_future) {
-        info!("Client stopped");
-    }
+        })
+        .map(|_|{})
 }

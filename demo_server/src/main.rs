@@ -18,6 +18,7 @@ use std::time::Duration;
 use message::Message;
 use spatiub::spatial::SpatialEvent;
 use spatiub::spatial::Point;
+use tokio::runtime::current_thread::Runtime;
 
 mod entity;
 mod codec;
@@ -43,7 +44,7 @@ fn main() {
     });
 
     thread::sleep(Duration::from_millis(100));
-    client::run_client(&addr, |message|{
+    let client_future = client::client(&addr, |message|{
         info!("Message received: {:?}", message);
 
         match message {
@@ -65,5 +66,10 @@ fn main() {
                 }
             },
         }
-    })
+    });
+
+    let mut runtime = Runtime::new().unwrap();
+    if let Err(_err) = runtime.block_on(client_future) {
+        info!("Client stopped");
+    }
 }
