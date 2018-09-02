@@ -20,6 +20,7 @@ use spatiub::spatial::SpatialEvent;
 use spatiub::spatial::Point;
 use tokio::runtime::current_thread::Runtime;
 use entity::Timestamp;
+use futures::future;
 
 mod entity;
 mod codec;
@@ -58,16 +59,16 @@ fn main() {
                     acting_entity: entity,
                     is_a_move: true,
                 });
-                Ok(Some(event))
+                future::ok(Some(event))
             },
             Message::Event(event) => {
                 if event.to.is_some(){
                     let latency = event.acting_entity.last_state_update.elapsed();
                     info!("Latency: {}", latency.subsec_nanos());
 
-                    Err(())
+                    future::err(())
                 } else {
-                    Ok(None)
+                    future::ok(None)
                 }
             },
         };

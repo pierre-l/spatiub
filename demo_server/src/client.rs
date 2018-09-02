@@ -1,13 +1,15 @@
-use futures::{Future, Stream, Sink};
+use futures::{Future, Sink, Stream};
+use message::Message;
 use server::codec;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio_codec::Decoder;
-use message::Message;
 
-pub fn client<F>(addr: &SocketAddr, message_consumer: F)
-    -> impl Future<Item=(), Error=()>
-    where F: Fn(Message) -> Result<Option<Message>, ()>
+pub fn client<C, F>(addr: &SocketAddr, message_consumer: C)
+                 -> impl Future<Item=(), Error=()>
+    where
+        C: Fn(Message) -> F,
+        F: Future<Item=Option<Message>, Error=()>,
 {
     TcpStream::connect(&addr)
         .map_err(|err|{
@@ -20,13 +22,8 @@ pub fn client<F>(addr: &SocketAddr, message_consumer: F)
 
             input
                 .map_err(|err| error!("An error occurred in the input stream: {}", err))
-                .then(move |result|{
-                    match result {
-                        Ok(message) => {
-                            message_consumer(message)
-                        }
-                        Err(err) => Err(err),
-                    }
+                .and_then(move |message|{
+                    message_consumer(message)
                 })
                 .filter_map(|message| message)
                 .forward(output)
