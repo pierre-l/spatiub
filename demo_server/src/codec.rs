@@ -9,19 +9,15 @@ use std::marker::PhantomData;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-pub struct LengthFieldBasedCodec<M, C>
-    where C: Encoder<Item=M, Error=Error> + Decoder<Item=M, Error=Error>
-{
-    inner: C,
-    phantom: PhantomData<M>
+pub struct LengthFieldBasedCodec<M> {
+    pub phantom: PhantomData<M>
 }
 
-impl <'de, C, M> Decoder for LengthFieldBasedCodec<M, C>
+impl <'de, M> Decoder for LengthFieldBasedCodec<M>
     where
-        C: Encoder<Item=M, Error=Error> + Decoder<Item=M, Error=Error>,
         M: DeserializeOwned
 {
-    type Item = <C as Decoder>::Item;
+    type Item = M;
     type Error = Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<M>, io::Error> {
@@ -50,9 +46,8 @@ impl <'de, C, M> Decoder for LengthFieldBasedCodec<M, C>
     }
 }
 
-impl <C, M> Encoder for LengthFieldBasedCodec<M, C>
+impl <M> Encoder for LengthFieldBasedCodec<M>
     where
-        C: Encoder<Item=M, Error=Error> + Decoder<Item=M, Error=Error>,
         M: Serialize,
 {
     type Item = M;

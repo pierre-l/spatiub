@@ -92,7 +92,7 @@ impl <S, E> SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity
         self.do_subscribe(subscriber, position, true);
     }
 
-    pub fn do_subscribe(&mut self, subscriber: S, position: &Point, warn_of_entities_in_zone: bool) {
+    fn do_subscribe(&mut self, subscriber: S, position: &Point, warn_of_entities_in_zone: bool) {
         let zone_index = zone_index_for_point(position, &self.map_definition);
         if let Some(channel) = self.channels.get_mut(zone_index) {
             channel.subscribe(subscriber, warn_of_entities_in_zone);

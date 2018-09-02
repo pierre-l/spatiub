@@ -5,7 +5,7 @@ use pub_sub::Subscriber;
 use std::rc::Rc;
 use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FutureSubscriber<E: Clone> {
     sender: UnboundedSender<Rc<E>>,
     entity_id: Uuid,
