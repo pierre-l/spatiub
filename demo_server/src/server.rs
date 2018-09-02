@@ -18,22 +18,20 @@ use message::Message;
 use futures::unsync::mpsc::UnboundedReceiver;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::net::SocketAddr;
 
 type Event = SpatialEvent<DemoEntity>;
 type SpatialChannelCell = RefCell<SpatialChannel<FutureSubscriber<Event>, DemoEntity>>;
 
-pub fn server() {;
-    let channel = Rc::new(RefCell::new(channel()));
+pub fn server(addr: &SocketAddr) {
+    let channel = RefCell::new(channel());
 
     let mut runtime = Runtime::new().unwrap();
 
-    let addr = "127.0.0.1:6142".parse().unwrap();
     let listener = TcpListener::bind(&addr).unwrap();
 
     let server = listener.incoming().map(|socket| {
-        let framed = codec().framed(socket);
-        let (outgoing, incoming) = framed.split();
-
+        let (output, input) = codec().framed(socket).split();
 
         let entity = DemoEntity{
             id: Uuid::new_v4(),
@@ -51,9 +49,9 @@ pub fn server() {;
             is_a_move: true,
         });
 
-        outgoing_events(subscription, entity, outgoing)
+        outgoing_events(subscription, entity, output)
             .join(
-                incoming
+                input
                     .map_err(|err|{
                         error!("IO error in the input stream: {}", err)
                     })
@@ -119,7 +117,7 @@ fn subscribe(
     }
 }
 
-fn codec() -> LengthFieldBasedCodec<Message> {
+pub fn codec() -> LengthFieldBasedCodec<Message> {
     LengthFieldBasedCodec{
         phantom: PhantomData,
     }
