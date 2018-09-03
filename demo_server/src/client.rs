@@ -22,9 +22,10 @@ pub fn client<C, F>(addr: &SocketAddr, message_consumer: C)
 
             input
                 .map_err(|err| error!("An error occurred in the input stream: {}", err))
-                .and_then(move |message|{
+                .map(move |message| {
                     message_consumer(message)
                 })
+                .buffered(100000)
                 .filter_map(|message| message)
                 .forward(output)
         })

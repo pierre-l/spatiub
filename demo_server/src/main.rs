@@ -20,9 +20,11 @@ use spatiub::spatial::SpatialEvent;
 use spatiub::spatial::Point;
 use tokio::runtime::current_thread::Runtime;
 use entity::Timestamp;
-use futures::future;
 use entity::DemoEntity;
-use futures::future::FutureResult;
+use futures::Future;
+use tokio::timer::Delay;
+use std::time::Instant;
+use std::ops::Add;
 
 mod entity;
 mod codec;
@@ -50,27 +52,18 @@ fn main() {
     thread::sleep(Duration::from_millis(100));
 
     let client_future = client::client(&addr, move |message|{
-        let result = match &message {
-            Message::ConnectionAck(entity) => {
-                trigger_new_move(entity.clone())
-            },
-            Message::Event(event) => {
-                if event.to.is_some(){
-                    let latency = event.acting_entity.last_state_update.elapsed();
+        if let Message::Event(event) = &message {
+            if event.to.is_some() {
+                let latency = event.acting_entity.last_state_update.elapsed();
 
-                    let latency = latency.subsec_nanos();
+                let latency = latency.subsec_nanos();
 
-                    if latency > 1_000_000 {
-                        info!("Latency: {}", latency);
-                    }
+                info!("Latency: {}", latency);
+            }
+        }
 
-                    trigger_new_move(event.acting_entity.clone())
-                } else {
-                    future::ok(None)
-                }
-            },
-        };
-        result
+        // PERFORMANCE Suboptimal. No need to send a delay future if result == None.
+        delay(message)
     });
 
     let mut runtime = Runtime::new().unwrap();
@@ -79,7 +72,7 @@ fn main() {
     }
 }
 
-fn trigger_new_move(mut entity: DemoEntity) -> FutureResult<Option<Message>, ()> {
+fn trigger_new_move(mut entity: DemoEntity) -> Option<Message> {
     entity.last_state_update = Timestamp::new();
     let event = Message::Event(SpatialEvent {
         from: Point(0, 0),
@@ -87,5 +80,29 @@ fn trigger_new_move(mut entity: DemoEntity) -> FutureResult<Option<Message>, ()>
         acting_entity: entity,
         is_a_move: true,
     });
-    future::ok(Some(event))
+
+    Some(event)
+}
+
+fn delay(message: Message) -> impl Future<Item=Option<Message>, Error=()> {
+    Delay::new(Instant::now().add(Duration::from_millis(500)))
+        .map(move |()| {
+            let result = match &message {
+                Message::ConnectionAck(entity) => {
+                    trigger_new_move(entity.clone())
+                },
+                Message::Event(event) => {
+                    if event.to.is_some() {
+                        trigger_new_move(event.acting_entity.clone())
+                    } else {
+                        None
+                    }
+                }
+            };
+
+            result
+        })
+        .map_err(|err|{
+            panic!("Timer error: {}", err)
+        })
 }
