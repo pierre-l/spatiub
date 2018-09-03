@@ -18,7 +18,3 @@ criterion = "0.2"
 [[bench]]
 name = "spatial_benchmark"
 harness = false
-
-[profile.dev]
-opt-level = 3
-lto = true
