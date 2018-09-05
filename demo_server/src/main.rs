@@ -17,6 +17,7 @@ use entity::Timestamp;
 use futures::Future;
 use log::LevelFilter;
 use message::Message;
+use spatiub::spatial::Entity;
 use spatiub::spatial::Point;
 use spatiub::spatial::SpatialEvent;
 use std::net::SocketAddr;
@@ -26,6 +27,7 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio::runtime::current_thread::Runtime;
 use tokio::timer::Delay;
+use std::cell::RefCell;
 
 mod entity;
 mod codec;
@@ -52,14 +54,27 @@ fn main() {
 
     thread::sleep(Duration::from_millis(100));
 
-    let client_future = client::client(&addr, |message|{
-        if let Message::Event(event) = &message {
-            if let Some(ref destination) = &event.to {
-                let latency = event.acting_entity.last_state_update.elapsed();
+    let client_entity_id = RefCell::new(None);
+    let client_future = client::client(
+        &addr,
+        |message|{
+        if let Message::ConnectionAck(entity) = &message {
+            client_entity_id.replace(Some(entity.id().clone()));
+        } else if let Message::Event(event) = &message {
+            let involves_client_entity = if let Some(ref client_entity_id) = *client_entity_id.borrow(){
+                event.acting_entity.id() == client_entity_id
+            } else {
+                false
+            };
 
-                let latency = latency.subsec_nanos();
+            if involves_client_entity{
+                if let Some(ref destination) = &event.to {
+                    let latency = event.acting_entity.last_state_update.elapsed();
 
-                info!("Position: {:?}, Latency: {}", destination, latency);
+                    let latency = latency.subsec_nanos();
+
+                    info!("Position: {:?}, Latency: {}", destination, latency);
+                }
             }
         }
 

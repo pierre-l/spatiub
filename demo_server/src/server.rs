@@ -64,6 +64,7 @@ pub fn server(addr: &SocketAddr) {
                     .for_each(|message|{
                         match message {
                             Message::Event(event) => {
+                                // TODO Only accept events from the same entity.
                                 publish(&channel, event);
 
                                 future::ok(())
@@ -71,7 +72,7 @@ pub fn server(addr: &SocketAddr) {
                             Message::ConnectionAck(_) => {
                                 // Forbidden for clients
                                 future::err(())
-                            }
+                            },
                         }
                     }))
     })
