@@ -28,6 +28,9 @@ use std::time::Instant;
 use tokio::runtime::current_thread::Runtime;
 use tokio::timer::Delay;
 use std::cell::RefCell;
+use spatiub::spatial::MapDefinition;
+use rand::ThreadRng;
+use rand::thread_rng;
 
 mod entity;
 mod codec;
@@ -44,11 +47,13 @@ fn main() {
         .filter_level(LevelFilter::Info)
         .init();
 
+    let map = MapDefinition::new(16, 16*16);
 
     let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
     let addr_clone = addr.clone();
+    let map_clone = map.clone();
     thread::spawn(move ||{
-        server::server(&addr_clone);
+        server::server(&addr_clone, map_clone);
         info!("Server stopped");
     });
 
@@ -79,7 +84,8 @@ fn main() {
         }
 
         // PERFORMANCE Suboptimal. No need to send a delay future if result == None.
-        delay(message)
+        // PERFORMANCE Suboptimal. Is there a way to avoid calling thread_rng everytime?
+        delay(message, &map, &mut thread_rng())
     });
 
     let mut runtime = Runtime::new().unwrap();
@@ -88,11 +94,11 @@ fn main() {
     }
 }
 
-fn trigger_new_move(mut entity: DemoEntity, from: Point) -> Option<Message> {
+fn trigger_new_move(mut entity: DemoEntity, from: Point, to: Point) -> Option<Message> {
     entity.last_state_update = Timestamp::new();
     let event = Message::Event(SpatialEvent {
-        to: Some(Point(from.0 + 1, from.1)),
         from,
+        to: Some(to),
         acting_entity: entity,
         is_a_move: true,
     });
@@ -100,12 +106,23 @@ fn trigger_new_move(mut entity: DemoEntity, from: Point) -> Option<Message> {
     Some(event)
 }
 
-fn delay(message: Message) -> impl Future<Item=Option<Message>, Error=()> {
+fn delay(message: Message, map: &MapDefinition, rng: &mut ThreadRng) -> impl Future<Item=Option<Message>, Error=()> {
+    // TODO Determine next position.
+    let next_position = if let Message::Event(ref event) = &message {
+        if let Some(ref destination) = &event.to{
+            Some(map.random_point_next_to(destination, rng))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     Delay::new(Instant::now().add(Duration::from_millis(500)))
         .map(move |()| {
             if let Message::Event(event) = message {
-                if let Some(destination) = event.to {
-                    trigger_new_move(event.acting_entity, destination)
+                if let Some(event_destination) = event.to {
+                    trigger_new_move(event.acting_entity, event_destination, next_position.unwrap())
                 } else {
                     None
                 }

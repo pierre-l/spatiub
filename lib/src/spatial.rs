@@ -245,6 +245,24 @@ impl MapDefinition{
     pub fn random_point(&self, rng: &mut ThreadRng) -> Point {
         Point(rng.gen_range(0, self.coordinate_max_value), rng.gen_range(0, self.coordinate_max_value))
     }
+
+    pub fn random_point_next_to(&self, point: &Point, rng: &mut ThreadRng) -> Point {
+        let direction = rng.gen_range(0, 4);
+
+        let candidate = match direction {
+            0 => Point(point.0 + 1, point.1),
+            1 => Point(point.0, point.1 + 1),
+            2 => Point(point.0 - 1, point.1),
+            3 => Point(point.0, point.1 - 1),
+            _ => panic!() // Should not happen.
+        };
+
+        if self.point_is_inside(&candidate) {
+            candidate
+        } else {
+            self.random_point_next_to(point, rng)
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq, Clone)]
