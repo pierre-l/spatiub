@@ -63,7 +63,7 @@ fn main() {
     let client_future = client::client(
         &addr,
         |message|{
-        let trigger_new_move = if let Message::ConnectionAck(entity) = &message {
+        let involves_client_entity = if let Message::ConnectionAck(entity) = &message {
             client_entity_id.replace(Some(entity.id().clone()));
             true
         } else if let Message::Event(event) = &message {
@@ -88,7 +88,7 @@ fn main() {
 
         // PERFORMANCE Suboptimal. No need to send a delay future if result == None.
         // PERFORMANCE Suboptimal. Is there a way to avoid calling thread_rng everytime?
-        delay(message, &map, trigger_new_move)
+        delay(message, &map, involves_client_entity)
     });
 
     let mut runtime = Runtime::new().unwrap();
