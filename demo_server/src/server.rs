@@ -20,12 +20,16 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use entity::Timestamp;
+use rand::thread_rng;
 
 type Event = SpatialEvent<DemoEntity>;
 type SpatialChannelCell = RefCell<SpatialChannel<FutureSubscriber<Event>, DemoEntity>>;
 
 pub fn server(addr: &SocketAddr) {
-    let channel = RefCell::new(channel());
+    let mut rng = thread_rng();
+    let map = MapDefinition::new(16, 16*16);
+
+    let channel = RefCell::new(SpatialChannel::new(map.clone()));
 
     let mut runtime = Runtime::new().unwrap();
 
@@ -41,7 +45,7 @@ pub fn server(addr: &SocketAddr) {
 
         let (subscriber, subscription) = futures_sub::new_subscriber(entity.id().clone());
 
-        let position = Point(0, 0);
+        let position = map.random_point(&mut rng);
         subscribe(&channel, subscriber, &position);
 
         publish(&channel, Event{
@@ -83,13 +87,6 @@ pub fn server(addr: &SocketAddr) {
     runtime.block_on(server).unwrap();
 
     info!("Server stopped");
-}
-
-fn channel() -> SpatialChannel<FutureSubscriber<SpatialEvent<DemoEntity>>, DemoEntity> {
-    SpatialChannel::new(MapDefinition {
-        zone_width: 16,
-        map_width_in_zones: 16 * 16,
-    })
 }
 
 fn publish(

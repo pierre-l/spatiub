@@ -8,6 +8,7 @@ futures = "0.1.23"
 env_logger = "0.5.12"
 log = "0.4.3"
 uuid = { version = "0.6.5", features = ["serde", "v4"] }
+rand = "0.5.5"
 serde = "1.0.70"
 serde_derive = "1.0.70"
 bincode = "1.0.1"

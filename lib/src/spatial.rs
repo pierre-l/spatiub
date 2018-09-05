@@ -1,9 +1,10 @@
 use pub_sub::Subscriber;
+use rand::prelude::*;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 use uuid::Uuid;
-use std::collections::HashMap;
-use std::cell::RefCell;
 
 pub struct SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone {
     map_definition: MapDefinition,
@@ -217,18 +218,32 @@ pub struct SpatialEvent<E: Entity>{
     pub is_a_move: bool,
 }
 
+#[derive(Debug, Clone)]
 pub struct MapDefinition{
-    pub zone_width: usize,
-    pub map_width_in_zones: usize
+    zone_width: usize,
+    map_width_in_zones: usize,
+    coordinate_max_value: usize,
 }
 
 impl MapDefinition{
+    pub fn new(zone_width: usize, map_width_in_zones: usize) -> MapDefinition{
+        MapDefinition{
+            coordinate_max_value: map_width_in_zones * zone_width,
+            zone_width,
+            map_width_in_zones,
+        }
+    }
+
     pub fn point_is_inside(&self, point: &Point) -> bool {
         self.coord_is_inside(&point.0) && self.coord_is_inside(&point.1)
     }
 
     pub fn coord_is_inside(&self, coord: &usize) -> bool {
         coord < &(&self.zone_width * &self.map_width_in_zones)
+    }
+
+    pub fn random_point(&self, rng: &mut ThreadRng) -> Point {
+        Point(rng.gen_range(0, self.coordinate_max_value), rng.gen_range(0, self.coordinate_max_value))
     }
 }
 
@@ -287,11 +302,11 @@ fn zone_index_for_point(point: &Point, map_definition: &MapDefinition) -> usize{
 
 #[cfg(test)]
 mod tests{
-    use super::*;
     use env_logger;
     use pub_sub::PubSubError;
-    use std::sync::Mutex;
     use std::iter::FromIterator;
+    use std::sync::Mutex;
+    use super::*;
 
     const ZONE_WIDTH: usize = 16;
     const MAP_WIDTH_IN_ZONES: usize = 16;
@@ -428,10 +443,7 @@ mod tests{
 
     fn test_channel() -> SpatialChannel<CountingSubscriber, TestEntity> {
         SpatialChannel::new(
-            MapDefinition {
-                zone_width: ZONE_WIDTH,
-                map_width_in_zones: ZONE_WIDTH,
-            }
+            MapDefinition::new(ZONE_WIDTH, ZONE_WIDTH)
         )
     }
 
