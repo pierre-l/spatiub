@@ -63,8 +63,9 @@ fn main() {
     let client_future = client::client(
         &addr,
         |message|{
-        if let Message::ConnectionAck(entity) = &message {
+        let trigger_new_move = if let Message::ConnectionAck(entity) = &message {
             client_entity_id.replace(Some(entity.id().clone()));
+            true
         } else if let Message::Event(event) = &message {
             let involves_client_entity = if let Some(ref client_entity_id) = *client_entity_id.borrow(){
                 event.acting_entity.id() == client_entity_id
@@ -72,20 +73,22 @@ fn main() {
                 false
             };
 
-            if involves_client_entity{
-                if let Some(ref destination) = &event.to {
-                    let latency = event.acting_entity.last_state_update.elapsed();
+            if let Some(ref destination) = &event.to {
+                let latency = event.acting_entity.last_state_update.elapsed();
 
-                    let latency = latency.subsec_nanos();
+                let latency = latency.subsec_nanos();
 
-                    info!("Position: {:?}, Latency: {}", destination, latency);
-                }
+                info!("Position: {:?}, Latency: {}", destination, latency);
             }
-        }
+
+            involves_client_entity
+        } else {
+            false
+        };
 
         // PERFORMANCE Suboptimal. No need to send a delay future if result == None.
         // PERFORMANCE Suboptimal. Is there a way to avoid calling thread_rng everytime?
-        delay(message, &map, &mut thread_rng())
+        delay(message, &map, trigger_new_move)
     });
 
     let mut runtime = Runtime::new().unwrap();
@@ -94,23 +97,18 @@ fn main() {
     }
 }
 
-fn trigger_new_move(mut entity: DemoEntity, from: Point, to: Point) -> Option<Message> {
-    entity.last_state_update = Timestamp::new();
-    let event = Message::Event(SpatialEvent {
-        from,
-        to: Some(to),
-        acting_entity: entity,
-        is_a_move: true,
-    });
+fn delay(message: Message, map: &MapDefinition, client_entity_is_involved: bool)
+    -> impl Future<Item=Option<Message>, Error=()>
+{
+    let mut rng = thread_rng();
 
-    Some(event)
-}
-
-fn delay(message: Message, map: &MapDefinition, rng: &mut ThreadRng) -> impl Future<Item=Option<Message>, Error=()> {
-    // TODO Determine next position.
-    let next_position = if let Message::Event(ref event) = &message {
-        if let Some(ref destination) = &event.to{
-            Some(map.random_point_next_to(destination, rng))
+    let next_position = if client_entity_is_involved{
+        if let Message::Event(ref event) = &message {
+            if let Some(ref destination) = &event.to{
+                Some(map.random_point_next_to(destination, &mut rng))
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -133,4 +131,16 @@ fn delay(message: Message, map: &MapDefinition, rng: &mut ThreadRng) -> impl Fut
         .map_err(|err|{
             panic!("Timer error: {}", err)
         })
+}
+
+fn trigger_new_move(mut entity: DemoEntity, from: Point, to: Point) -> Option<Message> {
+    entity.last_state_update = Timestamp::new();
+    let event = Message::Event(SpatialEvent {
+        from,
+        to: Some(to),
+        acting_entity: entity,
+        is_a_move: true,
+    });
+
+    Some(event)
 }
