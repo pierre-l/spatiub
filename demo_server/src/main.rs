@@ -31,6 +31,7 @@ use std::cell::RefCell;
 use spatiub::spatial::MapDefinition;
 use rand::thread_rng;
 use rand::Rng;
+use std::thread::JoinHandle;
 
 mod entity;
 mod codec;
@@ -50,14 +51,7 @@ fn main() {
     let map = MapDefinition::new(16, 1024 * 4);
 
     let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
-    let addr_clone = addr.clone();
-    let map_clone = map.clone();
-    thread::spawn(move ||{
-        server::server(&addr_clone, map_clone);
-        info!("Server stopped");
-    });
-
-    thread::sleep(Duration::from_millis(5_000));
+    spawn_server_thread(map.clone(), addr.clone());
 
     let number_of_clients = 1000;
     let mut iter = vec![];
@@ -113,6 +107,17 @@ fn main() {
     }
 
     drop(addr);
+}
+
+fn spawn_server_thread(map: MapDefinition, addr_clone: SocketAddr) -> JoinHandle<()>{
+    let handle = thread::spawn(move || {
+        server::server(&addr_clone, map);
+        info!("Server stopped");
+    });
+
+    thread::sleep(Duration::from_millis(5_000));
+
+    handle
 }
 
 fn delay(message: Message, map: &MapDefinition, client_entity_is_involved: bool)
