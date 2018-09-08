@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 use uuid::Uuid;
-use std::usize::MAX as USIZE_MAX;
 
 pub struct SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone {
     map_definition: MapDefinition,
@@ -229,7 +228,7 @@ pub struct MapDefinition{
 impl MapDefinition{
     pub fn new(zone_width: usize, map_width_in_zones: usize) -> MapDefinition{
         MapDefinition{
-            coordinate_max_value: map_width_in_zones * zone_width,
+            coordinate_max_value: map_width_in_zones * zone_width - 1,
             zone_width,
             map_width_in_zones,
         }
@@ -250,38 +249,56 @@ impl MapDefinition{
     pub fn random_point_next_to(&self, point: &Point, rng: &mut ThreadRng) -> Point {
         let mut candidate = point.clone();
 
-        while &candidate==point {
-            let direction = rng.gen_range(0, 4);
+        let direction = rng.gen_range(0, 4);
 
-            match direction {
-                0 => {
-                    if candidate.0 < USIZE_MAX {
-                        candidate.0 += 1;
-                    }
-                },
-                1 => {
-                    if candidate.1 < USIZE_MAX {
-                        candidate.1 += 1;
-                    }
-                },
-                2 => {
-                    if candidate.0 > 0 {
-                        candidate.0 -= 1;
-                    }
-                },
-                3 => {
-                    if candidate.1 > 0 {
-                        candidate.1 -= 1;
-                    }
-                },
-                _ => panic!() // Should not happen.
-            };
-
-            if !self.point_is_inside(&candidate) {
-                candidate.0 = point.0; // More efficient than cloning.
-                candidate.1 = point.1;
-            }
-        }
+        // Doing it this way avoids the need of a loop.
+        match direction {
+            0 => {
+                if candidate.0 < self.coordinate_max_value {
+                    candidate.0 += 1;
+                } else if candidate.0 > 0 {
+                    candidate.0 -= 1;
+                } else if candidate.1 < self.coordinate_max_value {
+                    candidate.1 += 1;
+                } else {
+                    candidate.1 -= 1;
+                }
+            },
+            1 => {
+                if candidate.0 > 0 {
+                    candidate.0 -= 1;
+                } else if candidate.1 < self.coordinate_max_value {
+                    candidate.1 += 1;
+                } else if candidate.1 > 0 {
+                    candidate.1 -= 1;
+                } else {
+                    candidate.0 += 1;
+                }
+            },
+            2 => {
+                if candidate.1 < self.coordinate_max_value {
+                    candidate.1 += 1;
+                } else if candidate.1 > 0 {
+                    candidate.1 -= 1;
+                } else if candidate.0 < self.coordinate_max_value {
+                    candidate.0 += 1;
+                } else {
+                    candidate.0 -= 1;
+                }
+            },
+            3 => {
+                if candidate.1 > 0 {
+                    candidate.1 -= 1;
+                } else if candidate.0 < self.coordinate_max_value {
+                    candidate.0 += 1;
+                } else if candidate.0 > 0 {
+                    candidate.0 -= 1;
+                } else {
+                    candidate.1 += 1;
+                }
+            },
+            _ => panic!() // Should not happen.
+        };
 
         candidate
     }
@@ -374,7 +391,7 @@ mod tests{
             let origin = map.random_point(&mut rng);
             let point = map.random_point_next_to(&origin, &mut rng);
 
-            assert!(map.point_is_inside(&point));
+            assert!(map.point_is_inside(&point), format!("Point {:?} outside of {:?}", point, map));
 
             let distance_x = max(origin.0, point.0) - min(origin.0, point.0);
             let distance_y = max(origin.1, point.1) - min(origin.1, point.1);
