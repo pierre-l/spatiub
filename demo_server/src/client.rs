@@ -8,8 +8,8 @@ use tokio_codec::Decoder;
 pub fn client<C, F>(addr: &SocketAddr, message_consumer: C)
                  -> impl Future<Item=(), Error=()>
     where
-        C: Fn(Message) -> F,
-        F: Future<Item=Option<Message>, Error=()>,
+        C: Fn(Message) -> Option<F>,
+        F: Future<Item=Message, Error=()>,
 {
     TcpStream::connect(&addr)
         .map_err(|err|{
@@ -25,8 +25,8 @@ pub fn client<C, F>(addr: &SocketAddr, message_consumer: C)
                 .map(move |message| {
                     message_consumer(message)
                 })
+                .filter_map(|future| future)
                 .buffered(100000)
-                .filter_map(|message| message)
                 .forward(output)
         })
         .map(|_|{})
