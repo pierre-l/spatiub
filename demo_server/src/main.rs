@@ -55,10 +55,35 @@ fn main() {
     let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
     spawn_server_thread(map.clone(), addr.clone());
 
-    spawn_client_thread(map, addr, 1000);
+    let mut client_handles = vec![];
+    for _i in 0..3 {
+        let handle = spawn_client_thread(map.clone(), addr.clone(), 1000);
+        client_handles.push(handle);
+    }
+
+    for handle in client_handles{
+        handle.join().unwrap();
+    }
 }
 
-fn spawn_client_thread(map: MapDefinition, addr: SocketAddr, number_of_clients: usize) {
+fn spawn_client_thread(
+    map: MapDefinition,
+    addr: SocketAddr,
+    number_of_clients: usize
+) -> JoinHandle<()>{
+    let handle = thread::spawn(move || {
+        run_clients(map, addr, number_of_clients);
+        info!("Clients stopped");
+    });
+
+    handle
+}
+
+fn run_clients(
+    map: MapDefinition,
+    addr: SocketAddr,
+    number_of_clients: usize
+) {
     let mut iter = vec![];
     for _i in 0..number_of_clients { iter.push(()) }
 
