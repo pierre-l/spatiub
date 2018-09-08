@@ -33,6 +33,7 @@ use rand::thread_rng;
 use rand::Rng;
 use std::thread::JoinHandle;
 use rand::ThreadRng;
+use uuid::Uuid;
 
 mod entity;
 mod codec;
@@ -66,16 +67,9 @@ fn main() {
             client::client(
                 &addr,
                 move |message|{
-                    let involves_client_entity = if let Message::ConnectionAck(entity) = &message {
+                    if let Message::ConnectionAck(entity) = &message {
                         client_entity_id.replace(Some(entity.id().clone()));
-                        true
                     } else if let Message::Event(event) = &message {
-                        let involves_client_entity = if let Some(ref client_entity_id) = *client_entity_id.borrow(){
-                            event.acting_entity.id() == client_entity_id
-                        } else {
-                            false
-                        };
-
                         if let Some(ref destination) = &event.to {
                             let latency = event.acting_entity.last_state_update.elapsed();
 
@@ -85,13 +79,13 @@ fn main() {
                                 info!("Position: {:?}, Latency: {}", destination, latency);
                             }
                         }
-
-                        involves_client_entity
-                    } else {
-                        false
                     };
 
-                    delay(message, &map, involves_client_entity)
+                    if let Some(ref entity_id) = &*client_entity_id.borrow() {
+                        trigger_new_move_if_client_entity_involved(message, &map, entity_id)
+                    } else {
+                        panic!("Expected the entity id to be set");
+                    }
                 })
         })
         .buffered(number_of_clients);
@@ -119,22 +113,28 @@ fn spawn_server_thread(map: MapDefinition, addr_clone: SocketAddr) -> JoinHandle
     handle
 }
 
-fn delay(message: Message, map: &MapDefinition, client_entity_is_involved: bool)
-         -> Option<impl Future<Item=Message, Error=()>>
+fn trigger_new_move_if_client_entity_involved(
+    message: Message,
+    map: &MapDefinition,
+    client_entity_id: &Uuid,
+)
+    -> Option<impl Future<Item=Message, Error=()>>
 {
     // PERFORMANCE Suboptimal. Is there a way to avoid calling thread_rng everytime?
     let mut rng = thread_rng();
 
-    if client_entity_is_involved{
-        if let Message::Event(event) = message {
-            if let Some(destination) = event.to{
-                let entity = event.acting_entity;
-                let delayed_move = trigger_new_move(&mut rng, &map, entity, destination);
+    if let Message::Event(
+        SpatialEvent{
+            from: _,
+            to: Some(to),
+            acting_entity,
+            is_a_move: true,
+        }
+    ) = message{
+        if acting_entity.id() == client_entity_id {
+            let delayed_move = trigger_new_move(&mut rng, &map, acting_entity, to);
 
-                Some(delayed_move)
-            } else {
-                None
-            }
+            Some(delayed_move)
         } else {
             None
         }
