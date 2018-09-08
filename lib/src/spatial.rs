@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 use uuid::Uuid;
+use std::usize::MAX as USIZE_MAX;
 
 pub struct SpatialChannel<S, E> where S: Subscriber<SpatialEvent<E>>, E: Entity+Clone {
     map_definition: MapDefinition,
@@ -247,21 +248,42 @@ impl MapDefinition{
     }
 
     pub fn random_point_next_to(&self, point: &Point, rng: &mut ThreadRng) -> Point {
-        let direction = rng.gen_range(0, 4);
+        let mut candidate = point.clone();
 
-        let candidate = match direction {
-            0 => Point(point.0 + 1, point.1),
-            1 => Point(point.0, point.1 + 1),
-            2 => Point(point.0 - 1, point.1),
-            3 => Point(point.0, point.1 - 1),
-            _ => panic!() // Should not happen.
-        };
+        while &candidate==point {
+            let direction = rng.gen_range(0, 4);
 
-        if self.point_is_inside(&candidate) {
-            candidate
-        } else {
-            self.random_point_next_to(point, rng)
+            match direction {
+                0 => {
+                    if candidate.0 < USIZE_MAX {
+                        candidate.0 += 1;
+                    }
+                },
+                1 => {
+                    if candidate.1 < USIZE_MAX {
+                        candidate.1 += 1;
+                    }
+                },
+                2 => {
+                    if candidate.0 > 0 {
+                        candidate.0 -= 1;
+                    }
+                },
+                3 => {
+                    if candidate.1 > 0 {
+                        candidate.1 -= 1;
+                    }
+                },
+                _ => panic!() // Should not happen.
+            };
+
+            if !self.point_is_inside(&candidate) {
+                candidate.0 = point.0; // More efficient than cloning.
+                candidate.1 = point.1;
+            }
         }
+
+        candidate
     }
 }
 
@@ -325,9 +347,41 @@ mod tests{
     use std::iter::FromIterator;
     use std::sync::Mutex;
     use super::*;
+    use std::cmp::max;
+    use std::cmp::min;
 
     const ZONE_WIDTH: usize = 16;
     const MAP_WIDTH_IN_ZONES: usize = 16;
+
+    #[test]
+    pub fn can_compute_random_points(){
+        let map = MapDefinition::new(ZONE_WIDTH, MAP_WIDTH_IN_ZONES);
+
+        let mut rng = thread_rng();
+        for _i in 0..1_000_000{
+            let point = map.random_point(&mut rng);
+
+            assert!(map.point_is_inside(&point));
+        }
+    }
+
+    #[test]
+    pub fn can_compute_random_points_next_to(){
+        let map = MapDefinition::new(ZONE_WIDTH, MAP_WIDTH_IN_ZONES);
+
+        let mut rng = thread_rng();
+        for _i in 0..1_000{
+            let origin = map.random_point(&mut rng);
+            let point = map.random_point_next_to(&origin, &mut rng);
+
+            assert!(map.point_is_inside(&point));
+
+            let distance_x = max(origin.0, point.0) - min(origin.0, point.0);
+            let distance_y = max(origin.1, point.1) - min(origin.1, point.1);
+            let distance = distance_x * distance_x + distance_y * distance_y;
+            assert_eq!(1, distance);
+        }
+    }
 
     #[test]
     pub fn can_subscribe(){
