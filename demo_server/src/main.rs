@@ -14,7 +14,7 @@ extern crate uuid;
 
 use entity::DemoEntity;
 use entity::Timestamp;
-use futures::Future;
+use futures::{future, Future, stream, Stream};
 use log::LevelFilter;
 use message::Message;
 use spatiub::spatial::Entity;
@@ -29,8 +29,8 @@ use tokio::runtime::current_thread::Runtime;
 use tokio::timer::Delay;
 use std::cell::RefCell;
 use spatiub::spatial::MapDefinition;
-use rand::ThreadRng;
 use rand::thread_rng;
+use rand::Rng;
 
 mod entity;
 mod codec;
@@ -47,7 +47,7 @@ fn main() {
         .filter_level(LevelFilter::Info)
         .init();
 
-    let map = MapDefinition::new(16, 16*16);
+    let map = MapDefinition::new(16, 1024 * 4);
 
     let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
     let addr_clone = addr.clone();
@@ -57,48 +57,66 @@ fn main() {
         info!("Server stopped");
     });
 
-    thread::sleep(Duration::from_millis(100));
+    thread::sleep(Duration::from_millis(5_000));
 
-    let client_entity_id = RefCell::new(None);
-    let client_future = client::client(
-        &addr,
-        |message|{
-        let involves_client_entity = if let Message::ConnectionAck(entity) = &message {
-            client_entity_id.replace(Some(entity.id().clone()));
-            true
-        } else if let Message::Event(event) = &message {
-            let involves_client_entity = if let Some(ref client_entity_id) = *client_entity_id.borrow(){
-                event.acting_entity.id() == client_entity_id
-            } else {
-                false
-            };
+    let number_of_clients = 1000;
+    let mut iter = vec![];
+    for _i in 0..number_of_clients { iter.push(()) }
 
-            if let Some(ref destination) = &event.to {
-                let latency = event.acting_entity.last_state_update.elapsed();
+    let clients = stream::iter_ok(iter)
+        .map(|_i|{
+            let ref addr = addr;
+            let client_entity_id = RefCell::new(None);
+            let map = map.clone();
+            client::client(
+                &addr,
+                move |message|{
+                    let involves_client_entity = if let Message::ConnectionAck(entity) = &message {
+                        client_entity_id.replace(Some(entity.id().clone()));
+                        true
+                    } else if let Message::Event(event) = &message {
+                        let involves_client_entity = if let Some(ref client_entity_id) = *client_entity_id.borrow(){
+                            event.acting_entity.id() == client_entity_id
+                        } else {
+                            false
+                        };
 
-                let latency = latency.subsec_nanos();
+                        if let Some(ref destination) = &event.to {
+                            let latency = event.acting_entity.last_state_update.elapsed();
 
-                info!("Position: {:?}, Latency: {}", destination, latency);
-            }
+                            let latency = latency.subsec_nanos();
 
-            involves_client_entity
-        } else {
-            false
-        };
+                            if latency > 10_000_000 {
+                                info!("Position: {:?}, Latency: {}", destination, latency);
+                            }
+                        }
 
-        // PERFORMANCE Suboptimal. No need to send a delay future if result == None.
-        // PERFORMANCE Suboptimal. Is there a way to avoid calling thread_rng everytime?
-        delay(message, &map, involves_client_entity)
-    });
+                        involves_client_entity
+                    } else {
+                        false
+                    };
+
+                    // PERFORMANCE Suboptimal. No need to send a delay future if result == None.
+                    // PERFORMANCE Suboptimal. Is there a way to avoid calling thread_rng everytime?
+                    delay(message, &map, involves_client_entity)
+                })
+        })
+        .buffered(number_of_clients);
 
     let mut runtime = Runtime::new().unwrap();
-    if let Err(_err) = runtime.block_on(client_future) {
+    if let Err(_err) = runtime.block_on(
+        clients.for_each(|_|{
+            future::ok(())
+        })
+    ) {
         info!("Client stopped");
     }
+
+    drop(addr);
 }
 
 fn delay(message: Message, map: &MapDefinition, client_entity_is_involved: bool)
-    -> impl Future<Item=Option<Message>, Error=()>
+         -> impl Future<Item=Option<Message>, Error=()>
 {
     let mut rng = thread_rng();
 
@@ -116,11 +134,15 @@ fn delay(message: Message, map: &MapDefinition, client_entity_is_involved: bool)
         None
     };
 
-    Delay::new(Instant::now().add(Duration::from_millis(500)))
+    Delay::new(Instant::now().add(Duration::from_millis(rng.gen_range(500, 1500))))
         .map(move |()| {
-            if let Message::Event(event) = message {
-                if let Some(event_destination) = event.to {
-                    trigger_new_move(event.acting_entity, event_destination, next_position.unwrap())
+            if let Some(next_position) = next_position {
+                if let Message::Event(event) = message {
+                    if let Some(event_destination) = event.to {
+                        trigger_new_move(event.acting_entity, event_destination, next_position)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
