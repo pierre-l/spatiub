@@ -55,18 +55,21 @@ fn main() {
     let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
     spawn_server_thread(map.clone(), addr.clone());
 
-    let number_of_clients = 1000;
+    spawn_client_thread(map, addr, 1000);
+}
+
+fn spawn_client_thread(map: MapDefinition, addr: SocketAddr, number_of_clients: usize) {
     let mut iter = vec![];
     for _i in 0..number_of_clients { iter.push(()) }
 
     let clients = stream::iter_ok(iter)
-        .map(|_i|{
+        .map(|_i| {
             let ref addr = addr;
             let client_entity_id = RefCell::new(None);
             let map = map.clone();
             client::client(
                 &addr,
-                move |message|{
+                move |message| {
                     if let Message::ConnectionAck(entity) = &message {
                         client_entity_id.replace(Some(entity.id().clone()));
                     } else if let Message::Event(event) = &message {
@@ -92,7 +95,7 @@ fn main() {
 
     let mut runtime = Runtime::new().unwrap();
     if let Err(_err) = runtime.block_on(
-        clients.for_each(|_|{
+        clients.for_each(|_| {
             future::ok(())
         })
     ) {
