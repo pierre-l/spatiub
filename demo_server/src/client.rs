@@ -16,7 +16,7 @@ pub fn client<C, F>(addr: &SocketAddr, message_consumer: C)
             panic!("Connection failed. Cause: {}", err)
         })
         .and_then(move |socket| {
-            info!("Connection established");
+            debug!("Connection established");
             let (output, input) = codec().framed(socket).split();
             let output = output.sink_map_err(|err| error!("An error occurred in the input stream: {}", err));
 
