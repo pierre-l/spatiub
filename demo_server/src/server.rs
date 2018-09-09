@@ -35,6 +35,7 @@ pub fn server(addr: &SocketAddr, map: MapDefinition) {
     let listener = TcpListener::bind(&addr).unwrap();
 
     let server = listener.incoming().map(|socket| {
+        socket.set_nodelay(true).unwrap();
         let (output, input) = codec().framed(socket).split();
 
         let entity = DemoEntity{
