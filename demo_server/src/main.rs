@@ -107,32 +107,7 @@ fn run_clients(
 
     let clients = stream::iter_ok(iter)
         .map(|_i| {
-            let ref addr = addr;
-            let client_entity_id = RefCell::new(None);
-            let map = map.clone();
-            client::client(
-                &addr,
-                move |message| {
-                    if let Message::ConnectionAck(entity) = &message {
-                        client_entity_id.replace(Some(entity.id().clone()));
-                    } else if let Message::Event(event) = &message {
-                        if let Some(ref destination) = &event.to {
-                            let latency = event.acting_entity.last_state_update.elapsed();
-
-                            let latency = latency.subsec_nanos();
-
-                            if latency > 10_000_000 {
-                                info!("Position: {:?}, Latency: {}", destination, latency);
-                            }
-                        }
-                    };
-
-                    if let Some(ref entity_id) = &*client_entity_id.borrow() {
-                        trigger_new_move_if_client_entity_involved(message, &map, entity_id)
-                    } else {
-                        panic!("Expected the entity id to be set");
-                    }
-                })
+            run_client(map.clone(), addr)
         })
         .buffered(number_of_clients);
 
@@ -144,8 +119,35 @@ fn run_clients(
     ) {
         info!("Client stopped");
     }
+}
 
-    drop(addr);
+fn run_client(map: MapDefinition, addr: SocketAddr) -> impl Future<Item=(), Error=()> {
+    let ref addr = addr;
+    let client_entity_id = RefCell::new(None);
+
+    client::client(
+        &addr,
+        move |message| {
+            if let Message::ConnectionAck(entity) = &message {
+                client_entity_id.replace(Some(entity.id().clone()));
+            } else if let Message::Event(event) = &message {
+                if let Some(ref destination) = &event.to {
+                    let latency = event.acting_entity.last_state_update.elapsed();
+
+                    let latency = latency.subsec_nanos();
+
+                    if latency > 10_000_000 {
+                        info!("Position: {:?}, Latency: {}", destination, latency);
+                    }
+                }
+            };
+
+            if let Some(ref entity_id) = &*client_entity_id.borrow() {
+                trigger_new_move_if_client_entity_involved(message, &map, entity_id)
+            } else {
+                panic!("Expected the entity id to be set");
+            }
+        })
 }
 
 fn spawn_server_thread(
