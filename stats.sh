@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 tmp_file="tmp_latency.csv"
 
-cut --complement -f 1 -d, client_log.csv > $tmp_file
+cut --complement -f 2 -d, client_log.csv > $tmp_file
 
 format="%d"
 
