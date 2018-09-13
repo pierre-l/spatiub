@@ -50,17 +50,23 @@ fn main() {
     let map = MapDefinition::new(16, 1024 * 4);
 
     let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
-    spawn_server_thread(hw_topo.clone(), map.clone(), addr.clone());
 
-    let mut client_handles = vec![];
-    for i in 1..num_cores {
-        let handle = spawn_client_thread(hw_topo.clone(), i, map.clone(), addr.clone(), 1000);
-        client_handles.push(handle);
-    }
+    spawn_server_thread(
+        hw_topo.clone(),
+        num_cores - 1,
+        map.clone(),
+        addr.clone()
+    );
 
-    for handle in client_handles{
-        handle.join().unwrap();
-    }
+    thread::sleep(Duration::from_millis(5_000));
+
+    spawn_client_thread(
+        hw_topo.clone(),
+        num_cores - 2,
+        map.clone(),
+        addr.clone(),
+        1000
+    ).join().unwrap();
 }
 
 fn spawn_client_thread(
@@ -68,12 +74,14 @@ fn spawn_client_thread(
     cpu_index: usize,
     map: MapDefinition,
     addr: SocketAddr,
-    number_of_clients: usize
+    number_of_clients: usize,
 ) -> JoinHandle<()>{
+    info!("Spawning client on core #{}", cpu_index);
+
     let handle = thread::spawn(move || {
         pin_thread_to_core(hw_topo, cpu_index);
 
-        client::run_clients(map, addr, number_of_clients);
+        client::run_clients(map, addr, number_of_clients, "client_log.csv");
         info!("Clients stopped");
     });
 
@@ -82,17 +90,18 @@ fn spawn_client_thread(
 
 fn spawn_server_thread(
     hw_topo: Arc<Mutex<Topology>>,
+    cpu_index: usize,
     map: MapDefinition,
     addr_clone: SocketAddr,
 ) -> JoinHandle<()>{
+    info!("Spawning server on core #{}", cpu_index);
+
     let handle = thread::spawn(move || {
-        pin_thread_to_core(hw_topo, 0);
+        pin_thread_to_core(hw_topo, cpu_index);
 
         server::server(&addr_clone, map);
         info!("Server stopped");
     });
-
-    thread::sleep(Duration::from_millis(5_000));
 
     handle
 }

@@ -20,9 +20,13 @@ use tokio::runtime::current_thread::Runtime;
 use tokio::timer::Delay;
 use tokio_codec::Decoder;
 use uuid::Uuid;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::Write;
+use std::rc::Rc;
 
 fn client<C, F>(addr: &SocketAddr, message_consumer: C)
-                 -> impl Future<Item=(), Error=()>
+                -> impl Future<Item=(), Error=()>
     where
         C: Fn(Message) -> Option<F>,
         F: Future<Item=Message, Error=()>,
@@ -52,15 +56,16 @@ fn client<C, F>(addr: &SocketAddr, message_consumer: C)
 pub fn run_clients(
     map: MapDefinition,
     addr: SocketAddr,
-    number_of_clients: usize
+    number_of_clients: usize,
+    log_file_path: &str,
 ) {
-
     let mut iter = vec![];
-    for _i in 0..number_of_clients { iter.push(()) }
+    for i in 0..number_of_clients { iter.push(i) }
 
+    let logger = Rc::new(RefCell::new(ClientEventLogger::new(log_file_path)));
     let clients = stream::iter_ok(iter)
         .map(|_i| {
-            run_client(map.clone(), addr)
+            run_client(map.clone(), addr, logger.clone())
         })
         .buffered(number_of_clients);
 
@@ -71,10 +76,10 @@ pub fn run_clients(
         })
     ) {
         info!("Client stopped");
-    }
+    };
 }
 
-fn run_client(map: MapDefinition, addr: SocketAddr) -> impl Future<Item=(), Error=()> {
+fn run_client(map: MapDefinition, addr: SocketAddr, logger: Rc<RefCell<ClientEventLogger>>) -> impl Future<Item=(), Error=()> {
     let ref addr = addr;
     let client_entity_id = RefCell::new(None);
 
@@ -84,15 +89,9 @@ fn run_client(map: MapDefinition, addr: SocketAddr) -> impl Future<Item=(), Erro
             if let Message::ConnectionAck(entity) = &message {
                 client_entity_id.replace(Some(entity.id().clone()));
             } else if let Message::Event(event) = &message {
-                if let Some(ref destination) = &event.to {
-                    let latency = event.acting_entity.last_state_update.elapsed();
+                let latency = event.acting_entity.last_state_update.elapsed();
 
-                    let latency = latency.subsec_nanos();
-
-                    if latency > 10_000_000 {
-                        info!("Position: {:?}, Latency: {}", destination, latency);
-                    }
-                }
+                logger.borrow_mut().log(event.clone(), latency);
             };
 
             if let Some(ref entity_id) = &*client_entity_id.borrow() {
@@ -149,4 +148,44 @@ fn trigger_new_move(rng: &mut ThreadRng, map: &MapDefinition, mut entity: DemoEn
         .map_err(|err|{
             panic!("Timer error: {}", err)
         })
+}
+
+const LOGGER_BUFFER_SIZE: usize = 500; // TODO May be unnecessary because of the BufWriter.
+struct ClientEventLogger {
+    buffer: Vec<(SpatialEvent<DemoEntity>, Duration)>,
+    writer: BufWriter<File>,
+}
+
+impl ClientEventLogger{
+    pub fn new(filepath: &str) -> ClientEventLogger {
+        let mut buffer = vec![];
+        buffer.reserve(LOGGER_BUFFER_SIZE);
+
+        let file = File::create(filepath).expect("Could not open the file.");
+
+        let writer = BufWriter::new(file);
+
+        ClientEventLogger{
+            buffer,
+            writer,
+        }
+    }
+
+    pub fn log(&mut self, event: SpatialEvent<DemoEntity>, latency: Duration){
+        self.buffer.push((event, latency));
+        self.flush_if_needed();
+    }
+
+    pub fn flush_if_needed(&mut self) {
+        if self.buffer.len() == LOGGER_BUFFER_SIZE {
+            let mut buffer = String::new();
+            while let Some((event, reception_time)) = self.buffer.pop() {
+                let entry = format!("{},{}\n", event.acting_entity.last_state_update, reception_time.subsec_nanos());
+                buffer += entry.as_str();
+            }
+            self.writer.write(buffer.as_bytes()).expect("Could not write to the file.");
+
+            self.buffer.reserve(LOGGER_BUFFER_SIZE);
+        }
+    }
 }

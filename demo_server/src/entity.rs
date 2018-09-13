@@ -4,6 +4,9 @@ use std::time::UNIX_EPOCH;
 use std::time::SystemTime;
 use std::time::Duration;
 use std::ops::Sub;
+use std::fmt::Display;
+use core::fmt;
+use std::fmt::Formatter;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DemoEntity{
@@ -31,6 +34,13 @@ impl Timestamp{
     pub fn elapsed(&self) -> Duration {
         let current = Timestamp::new();
         current.0.sub(self.clone().0)
+    }
+}
+
+impl Display for Timestamp {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let in_ms = self.0.as_secs() * 1000 + self.0.subsec_nanos() as u64 / 1_000_000;
+        write!(f, "{}", in_ms)
     }
 }
 
