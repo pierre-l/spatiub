@@ -60,12 +60,19 @@ pub fn run_clients(
     log_file_path: &str,
 ) {
     let mut iter = vec![];
-    for i in 0..number_of_clients { iter.push(i) }
+    for i in 0..number_of_clients as u64 { iter.push(i) }
 
     let logger = Rc::new(RefCell::new(ClientEventLogger::new(log_file_path)));
     let clients = stream::iter_ok(iter)
-        .map(|_i| {
-            run_client(map.clone(), addr, logger.clone())
+        .map(|i| {
+            Delay::new(Instant::now().add(Duration::from_millis(i * 5)))
+                .map(|_| {
+                    run_client(map.clone(), addr, logger.clone())
+                })
+                .map_err(|err|{
+                    panic!("Timer error: {}", err)
+                })
+                .flatten()
         })
         .buffered(number_of_clients);
 
@@ -132,9 +139,10 @@ fn trigger_new_move_if_client_entity_involved(
     }
 }
 
+const MSG_PER_SEC: u64 = 1;
 fn trigger_new_move(rng: &mut ThreadRng, map: &MapDefinition, mut entity: DemoEntity, from: Point) -> impl Future<Item=Message, Error=()> {
     let next_destination = map.random_point_next_to(&from, rng);
-    Delay::new(Instant::now().add(Duration::from_millis(rng.gen_range(500, 1500))))
+    Delay::new(Instant::now().add(Duration::from_millis(rng.gen_range(500/MSG_PER_SEC, 1500/MSG_PER_SEC))))
         .map(move |()| {
             entity.last_state_update = Timestamp::new();
 
@@ -180,7 +188,7 @@ impl ClientEventLogger{
         if self.buffer.len() == LOGGER_BUFFER_SIZE {
             let mut buffer = String::new();
             while let Some((event, reception_time)) = self.buffer.pop() {
-                let entry = format!("{},{}\n", event.acting_entity.last_state_update, reception_time.subsec_nanos());
+                let entry = format!("{},{}\n", reception_time.subsec_nanos(), event.acting_entity.last_state_update);
                 buffer += entry.as_str();
             }
             self.writer.write(buffer.as_bytes()).expect("Could not write to the file.");
