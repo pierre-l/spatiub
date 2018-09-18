@@ -31,13 +31,7 @@ mod server;
 mod client;
 
 fn main() {
-    // Always print backtrace on panic.
-    ::std::env::set_var("RUST_BACKTRACE", "1");
-
-    env_logger::Builder::from_default_env()
-        .default_format_module_path(false)
-        .filter_level(LevelFilter::Info)
-        .init();
+    setup_logging();
 
     let hw_topo = Arc::new(Mutex::new(Topology::new()));
 
@@ -51,66 +45,66 @@ fn main() {
 
     let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
 
-    spawn_server_thread(
-        hw_topo.clone(),
-        num_cores - 1,
-        map.clone(),
-        addr.clone()
-    );
-
-    thread::sleep(Duration::from_millis(5_000));
-
-    let number_of_clients = 2;
-    let mut client_handles = vec![];
-    for i in 0..number_of_clients {
-        let handle = spawn_client_thread(
+    {
+        let addr = addr.clone();
+        let map = map.clone();
+        run_thread(
             hw_topo.clone(),
-            num_cores - 2 - i,
-            map.clone(),
-            addr.clone(),
-            10000
+            num_cores - 1,
+            "server".to_string(),
+            move || server::server(&addr, &map),
         );
-        client_handles.push(handle);
     }
 
-    for handle in client_handles{
-        handle.join().unwrap()
+    thread::sleep(Duration::from_millis(5_000));
+    let number_of_clients = 2;
+
+    {
+        let mut client_handles = vec![];
+        for i in 0..number_of_clients {
+            let map = map.clone();
+            let addr = addr.clone();
+            let handle = run_thread(
+                hw_topo.clone(),
+                num_cores - 1 - i,
+                format!("client {}", i),
+                move || {
+                    client::run_clients(&map, addr, number_of_clients, format!("client_log_{}.csv", i).as_str());
+                }
+            );
+
+            client_handles.push(handle);
+        }
+
+        for handle in client_handles{
+            handle.join().unwrap()
+        }
     }
 }
 
-fn spawn_client_thread(
+fn setup_logging() {
+    // Always print backtrace on panic.
+    ::std::env::set_var("RUST_BACKTRACE", "1");
+
+    env_logger::Builder::from_default_env()
+        .default_format_module_path(false)
+        .filter_level(LevelFilter::Info)
+        .init();
+}
+
+fn run_thread(
     hw_topo: Arc<Mutex<Topology>>,
     cpu_index: usize,
-    map: MapDefinition,
-    addr: SocketAddr,
-    number_of_clients: usize,
+    label: String,
+    task: impl Fn() + Send + 'static,
 ) -> JoinHandle<()>{
-    info!("Spawning client on core #{}", cpu_index);
+    info!("Spawning {} on core #{}", label, cpu_index);
 
     thread::spawn(move || {
         pin_thread_to_core(hw_topo, cpu_index);
-
-        client::run_clients(map, addr, number_of_clients, format!("client_log_{}.csv", cpu_index).as_str());
-        info!("Clients stopped");
+        task();
+        info!("{} stopped", label);
     })
-}
-
-fn spawn_server_thread(
-    hw_topo: Arc<Mutex<Topology>>,
-    cpu_index: usize,
-    map: MapDefinition,
-    addr_clone: SocketAddr,
-) -> JoinHandle<()>{
-    info!("Spawning server on core #{}", cpu_index);
-
-    let handle = thread::spawn(move || {
-        pin_thread_to_core(hw_topo, cpu_index);
-
-        server::server(&addr_clone, map);
-        info!("Server stopped");
-    });
-
-    handle
 }
 
 fn cpuset_for_core(topology: &Topology, idx: usize) -> CpuSet {

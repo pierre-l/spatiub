@@ -25,7 +25,7 @@ use rand::thread_rng;
 type Event = SpatialEvent<DemoEntity>;
 type SpatialChannelCell = RefCell<SpatialChannel<FutureSubscriber<Event>, DemoEntity>>;
 
-pub fn server(addr: &SocketAddr, map: MapDefinition) {
+pub fn server(addr: &SocketAddr, map: &MapDefinition) {
     let mut rng = thread_rng();
 
     let channel = RefCell::new(SpatialChannel::new(map.clone()));

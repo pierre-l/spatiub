@@ -54,7 +54,7 @@ fn client<C, F>(addr: &SocketAddr, message_consumer: C)
 }
 
 pub fn run_clients(
-    map: MapDefinition,
+    map: &MapDefinition,
     addr: SocketAddr,
     number_of_clients: usize,
     log_file_path: &str,
