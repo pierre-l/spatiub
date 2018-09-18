@@ -60,13 +60,22 @@ fn main() {
 
     thread::sleep(Duration::from_millis(5_000));
 
-    spawn_client_thread(
-        hw_topo.clone(),
-        num_cores - 2,
-        map.clone(),
-        addr.clone(),
-        1000
-    ).join().unwrap();
+    let number_of_clients = 2;
+    let mut client_handles = vec![];
+    for i in 0..number_of_clients {
+        let handle = spawn_client_thread(
+            hw_topo.clone(),
+            num_cores - 2 - i,
+            map.clone(),
+            addr.clone(),
+            10000
+        );
+        client_handles.push(handle);
+    }
+
+    for handle in client_handles{
+        handle.join().unwrap()
+    }
 }
 
 fn spawn_client_thread(
@@ -78,14 +87,12 @@ fn spawn_client_thread(
 ) -> JoinHandle<()>{
     info!("Spawning client on core #{}", cpu_index);
 
-    let handle = thread::spawn(move || {
+    thread::spawn(move || {
         pin_thread_to_core(hw_topo, cpu_index);
 
-        client::run_clients(map, addr, number_of_clients, "client_log.csv");
+        client::run_clients(map, addr, number_of_clients, format!("client_log_{}.csv", cpu_index).as_str());
         info!("Clients stopped");
-    });
-
-    handle
+    })
 }
 
 fn spawn_server_thread(
