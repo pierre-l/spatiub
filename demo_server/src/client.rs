@@ -63,9 +63,10 @@ pub fn run_clients(
     for i in 0..number_of_clients as u64 { iter.push(i) }
 
     let logger = Rc::new(RefCell::new(ClientEventLogger::new(log_file_path)));
+    let mut rng = thread_rng();
     let clients = stream::iter_ok(iter)
         .map(|i| {
-            Delay::new(Instant::now().add(Duration::from_millis(i * 10)))
+            Delay::new(Instant::now().add(Duration::from_millis(i * rng.gen_range(15, 30))))
                 .map(|_| {
                     run_client(map.clone(), addr, logger.clone())
                 })

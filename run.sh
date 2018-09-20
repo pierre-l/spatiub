@@ -18,4 +18,4 @@ cat client_log_*.csv > client_log.csv
 ./stats.sh
 ./graph.sh
 
-sudo rm client_log*
+sudo rm client_log_*
