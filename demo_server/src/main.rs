@@ -24,6 +24,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 mod entity;
 mod codec;
@@ -107,6 +108,9 @@ fn run_thread(
 
     thread::spawn(move || {
         pin_thread_to_core(hw_topo, cpu_index);
+
+        thread::sleep(Duration::from_micros(900));
+
         task();
         info!("{} stopped", label);
     })
