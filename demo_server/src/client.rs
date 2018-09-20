@@ -65,7 +65,7 @@ pub fn run_clients(
     let logger = Rc::new(RefCell::new(ClientEventLogger::new(log_file_path)));
     let clients = stream::iter_ok(iter)
         .map(|i| {
-            Delay::new(Instant::now().add(Duration::from_millis(i * 5)))
+            Delay::new(Instant::now().add(Duration::from_millis(i * 10)))
                 .map(|_| {
                     run_client(map.clone(), addr, logger.clone())
                 })

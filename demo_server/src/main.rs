@@ -1,5 +1,6 @@
 extern crate bincode;
 extern crate bytes;
+extern crate clap;
 extern crate core;
 extern crate env_logger;
 extern crate futures;
@@ -14,6 +15,7 @@ extern crate tokio;
 extern crate tokio_codec;
 extern crate uuid;
 
+use clap::{App, SubCommand};
 use hwloc::{CPUBIND_THREAD, CpuSet, ObjectType, Topology};
 use log::LevelFilter;
 use spatiub::spatial::MapDefinition;
@@ -22,7 +24,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Duration;
 
 mod entity;
 mod codec;
@@ -33,7 +34,16 @@ mod client;
 fn main() {
     setup_logging();
 
+    let matches = App::new("Spatiub")
+        .version("0.1")
+        .author("Pierre L. <pierre.larger@gmail.com>")
+        .subcommand(SubCommand::with_name("server"))
+        .subcommand(SubCommand::with_name("client"))
+        .get_matches();
+
     let hw_topo = Arc::new(Mutex::new(Topology::new()));
+    let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
+    let map = MapDefinition::new(16, 1024 * 4);
 
     let num_cores = {
         let topo_locked = hw_topo.lock().unwrap();
@@ -41,35 +51,28 @@ fn main() {
     };
     info!("Found {} cores.", num_cores);
 
-    let map = MapDefinition::new(16, 1024 * 4);
-
-    let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
-
-    {
+    if let Some(_matches) = matches.subcommand_matches("server") {
         let addr = addr.clone();
         let map = map.clone();
         run_thread(
             hw_topo.clone(),
             num_cores - 1,
-            "server".to_string(),
-            move || server::server(&addr, &map),
-        );
-    }
+            "server".to_string(),move || server::server(&addr, &map),
+        ).join().unwrap();
 
-    thread::sleep(Duration::from_millis(5_000));
-    let number_of_clients = 2;
+    } else if let Some(_matches) = matches.subcommand_matches("client") {
+        let number_of_cores = 2;
 
-    {
         let mut client_handles = vec![];
-        for i in 0..number_of_clients {
+        for i in 0..number_of_cores {
             let map = map.clone();
             let addr = addr.clone();
             let handle = run_thread(
                 hw_topo.clone(),
-                num_cores - 1 - i,
+                num_cores - 2 - i,
                 format!("client {}", i),
                 move || {
-                    client::run_clients(&map, addr, number_of_clients, format!("client_log_{}.csv", i).as_str());
+                    client::run_clients(&map, addr, 1000, format!("client_log_{}.csv", i).as_str());
                 }
             );
 
@@ -79,11 +82,13 @@ fn main() {
         for handle in client_handles{
             handle.join().unwrap()
         }
+    } else {
+        panic!("Expected a subcommand.")
     }
 }
 
 fn setup_logging() {
-    // Always print backtrace on panic.
+// Always print backtrace on panic.
     ::std::env::set_var("RUST_BACKTRACE", "1");
 
     env_logger::Builder::from_default_env()
