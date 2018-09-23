@@ -1,5 +1,5 @@
 [package]
-name = "spatiub_demo_server"
+name = "spatiub_demo_core"
 version = "0.1.0"
 authors = ["pierre-l <pierre.larger@gmail.com>"]
 
@@ -15,7 +15,6 @@ log = "0.4.3"
 rand = "0.5.5"
 serde = "1.0.70"
 serde_derive = "1.0.70"
-spatiub_demo_core = { path = "../demo_core" }
 spatiub = { path = "../lib" }
 tokio = "0.1.8"
 tokio-codec = "0.1"

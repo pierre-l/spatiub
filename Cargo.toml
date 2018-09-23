@@ -2,6 +2,7 @@
 
 members = [
     "lib",
+    "demo_core",
     "demo_server",
 ]
 

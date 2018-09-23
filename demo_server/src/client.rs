@@ -1,7 +1,4 @@
-use entity::DemoEntity;
-use entity::Timestamp;
 use futures::{Future, future, Sink, Stream, stream};
-use message::Message;
 use rand::thread_rng;
 use rand::Rng;
 use rand::ThreadRng;
@@ -24,6 +21,9 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::rc::Rc;
+use spatiub_demo_core::message::Message;
+use spatiub_demo_core::entity::Timestamp;
+use spatiub_demo_core::entity::DemoEntity;
 
 fn client<C, F>(addr: &SocketAddr, message_consumer: C)
                 -> impl Future<Item=(), Error=()>

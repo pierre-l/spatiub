@@ -1,5 +1,3 @@
-extern crate bincode;
-extern crate bytes;
 extern crate clap;
 extern crate core;
 extern crate env_logger;
@@ -9,11 +7,11 @@ extern crate libc;
 #[macro_use] extern crate log;
 extern crate rand;
 extern crate serde;
-#[macro_use]extern crate serde_derive;
 extern crate spatiub;
 extern crate tokio;
 extern crate tokio_codec;
 extern crate uuid;
+extern crate spatiub_demo_core;
 
 use clap::{App, SubCommand};
 use hwloc::{CPUBIND_THREAD, CpuSet, ObjectType, Topology};
@@ -26,9 +24,6 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-mod entity;
-mod codec;
-mod message;
 mod server;
 mod client;
 

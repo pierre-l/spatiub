@@ -1,5 +1,3 @@
-use codec::LengthFieldBasedCodec;
-use entity::DemoEntity;
 use futures::{Future, future, Stream, stream, Sink};
 use spatiub::futures_sub;
 use spatiub::spatial::Entity;
@@ -14,13 +12,15 @@ use spatiub::spatial::SpatialEvent;
 use std::io::Error;
 use std::marker::PhantomData;
 use spatiub::futures_sub::FutureSubscriber;
-use message::Message;
 use futures::unsync::mpsc::UnboundedReceiver;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::net::SocketAddr;
-use entity::Timestamp;
 use rand::thread_rng;
+use spatiub_demo_core::entity::Timestamp;
+use spatiub_demo_core::entity::DemoEntity;
+use spatiub_demo_core::message::Message;
+use spatiub_demo_core::codec::LengthFieldBasedCodec;
 
 type Event = SpatialEvent<DemoEntity>;
 type SpatialChannelCell = RefCell<SpatialChannel<FutureSubscriber<Event>, DemoEntity>>;
