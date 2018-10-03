@@ -9,7 +9,7 @@ sleep 3s
 ./run_server.sh &
 sleep 5s
 
-sudo timeout 180s cset shield --exec chrt -f 99 ./target/release/spatiub_demo_server -- client
+sudo timeout 180s cset shield --exec chrt -f 99 ./target/release/spatiub_demo_client
 
 sudo cset shield -r
 

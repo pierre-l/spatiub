@@ -24,7 +24,7 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-mod server;
+mod client;
 
 fn main() {
     setup_logging();
@@ -44,13 +44,27 @@ fn main() {
     };
     info!("Found {} cores.", num_cores);
 
-    let addr = addr.clone();
-    let map = map.clone();
-    run_thread(
-        hw_topo.clone(),
-        num_cores - 1,
-        "server".to_string(),move || server::server(&addr, &map),
-    ).join().unwrap();
+    let number_of_cores = 2;
+
+    let mut client_handles = vec![];
+    for i in 0..number_of_cores {
+        let map = map.clone();
+        let addr = addr.clone();
+        let handle = run_thread(
+            hw_topo.clone(),
+            num_cores - 2 - i,
+            format!("client {}", i),
+            move || {
+                client::run_clients(&map, addr, 1000, format!("client_log_{}.csv", i).as_str());
+            }
+        );
+
+        client_handles.push(handle);
+    }
+
+    for handle in client_handles{
+        handle.join().unwrap()
+    }
 }
 
 fn setup_logging() {

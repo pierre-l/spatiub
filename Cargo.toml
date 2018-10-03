@@ -4,6 +4,7 @@ members = [
     "lib",
     "demo_core",
     "demo_server",
+    "demo_client",
 ]
 
 [profile.dev]

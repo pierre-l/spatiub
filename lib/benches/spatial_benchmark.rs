@@ -21,10 +21,7 @@ fn bench_sending(c: &mut Criterion) {
         let map_width_in_zones = 1000;
         let map_width = map_width_in_zones * ZONE_WIDTH;
         let mut channel = SpatialChannel::new(
-            MapDefinition {
-                zone_width: ZONE_WIDTH,
-                map_width_in_zones,
-            }
+            MapDefinition::new(ZONE_WIDTH, map_width_in_zones)
         );
 
         let entity_id = Uuid::new_v4();
