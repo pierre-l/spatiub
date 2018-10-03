@@ -5,7 +5,7 @@ cut --complement -f 2 -d, client_log.csv > $tmp_file
 
 format="%d"
 
-st --mean --stddev --min --max --format=$format $tmp_file
+st --N --mean --stddev --min --max --format=$format $tmp_file
 
 echo ""
 
