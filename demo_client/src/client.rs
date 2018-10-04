@@ -144,7 +144,7 @@ fn trigger_new_move_if_client_entity_involved(
 const MSG_PER_SEC: u64 = 1;
 fn trigger_new_move(rng: &mut ThreadRng, map: &MapDefinition, mut entity: DemoEntity, from: Point) -> impl Future<Item=Message, Error=()> {
     let next_destination = map.random_point_next_to(&from, rng);
-    Delay::new(Instant::now().add(Duration::from_millis(rng.gen_range(500/MSG_PER_SEC, 1500/MSG_PER_SEC))))
+    Delay::new(Instant::now().add(Duration::from_nanos(rng.gen_range(500_000_000/MSG_PER_SEC, 1_500_000_000/MSG_PER_SEC))))
         .map(move |()| {
             entity.last_state_update = Timestamp::new();
 
