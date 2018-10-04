@@ -160,43 +160,23 @@ fn trigger_new_move(rng: &mut ThreadRng, map: &MapDefinition, mut entity: DemoEn
         })
 }
 
-const LOGGER_BUFFER_SIZE: usize = 500; // TODO May be unnecessary because of the BufWriter.
 struct ClientEventLogger {
-    buffer: Vec<(SpatialEvent<DemoEntity>, Duration)>,
     writer: BufWriter<File>,
 }
 
 impl ClientEventLogger{
     pub fn new(filepath: &str) -> ClientEventLogger {
-        let mut buffer = vec![];
-        buffer.reserve(LOGGER_BUFFER_SIZE);
-
         let file = File::create(filepath).expect("Could not open the file.");
-
         let writer = BufWriter::new(file);
 
         ClientEventLogger{
-            buffer,
             writer,
         }
     }
 
     pub fn log(&mut self, event: SpatialEvent<DemoEntity>, latency: Duration){
-        self.buffer.push((event, latency));
-        self.flush_if_needed();
-    }
-
-    pub fn flush_if_needed(&mut self) {
-        if self.buffer.len() == LOGGER_BUFFER_SIZE {
-            let mut buffer = String::new();
-            while let Some((event, reception_time)) = self.buffer.pop() {
-                let entry = format!("{},{}\n", reception_time.subsec_nanos(), event.acting_entity.last_state_update);
-                buffer += entry.as_str();
-            }
-            self.writer.write(buffer.as_bytes()).expect("Could not write to the file.");
-
-            self.buffer.reserve(LOGGER_BUFFER_SIZE);
-        }
+        let entry = format!("{},{}\n", latency.subsec_nanos(), event.acting_entity.last_state_update);
+        self.writer.write(entry.as_bytes()).expect("Could not write to the file.");
     }
 }
 
