@@ -6,10 +6,16 @@ sudo rm client_log*
 sudo cset shield --cpu=1-3 --kthread=on
 sleep 3s
 
-./run_server.sh &
+DURATION=$1
+if [ -z "$1" ]
+then
+	DURATION=180
+fi
+
+./run_server.sh $DURATION &
 sleep 5s
 
-sudo timeout 180s cset shield --exec chrt -f 99 ./target/release/spatiub_demo_client
+sudo timeout $DURATION"s" cset shield --exec chrt -f 99 ./target/release/spatiub_demo_client
 
 sudo cset shield -r
 
