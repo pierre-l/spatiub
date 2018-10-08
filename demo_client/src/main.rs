@@ -39,6 +39,12 @@ fn main() {
                 .value_name("RATE")
                 .help("The approximate message rate per client")
                 .takes_value(true))
+            .arg(Arg::with_name("number_of_clients")
+                .short("n")
+                .long("number_of_clients")
+                .value_name("NUMBER_OF_CLIENTS")
+                .help("The number of clients to per core")
+                .takes_value(true))
         .get_matches();
 
     let hw_topo = Arc::new(Mutex::new(Topology::new()));
@@ -53,8 +59,11 @@ fn main() {
 
     let number_of_cores = 2;
 
-    let msg_per_sec: u64 = matches.value_of("rate").unwrap_or("1").parse::<u64>().unwrap();
+    let msg_per_sec = matches.value_of("rate").unwrap_or("1").parse::<u64>().unwrap();
     info!("Message rate: {}", msg_per_sec);
+
+    let number_of_clients = matches.value_of("number_of_clients").unwrap_or("1000").parse::<usize>().unwrap();
+    info!("Number of clients: {}", number_of_clients);
 
     let mut client_handles = vec![];
     for i in 0..number_of_cores {
@@ -68,7 +77,7 @@ fn main() {
                 client::run_clients(
                     &map,
                     addr,
-                    1000,
+                    number_of_clients,
                     format!("client_log_{}.csv", i).as_str(),
                     msg_per_sec,
                 );
