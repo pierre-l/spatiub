@@ -15,7 +15,7 @@ fi
 ./run_server.sh $DURATION &
 sleep 5s
 
-sudo timeout $DURATION"s" cset shield --exec chrt -f 99 ./target/release/spatiub_demo_client
+sudo timeout $DURATION"s" cset shield --exec chrt -f 99 ./target/release/spatiub_demo_client -- -r 10
 
 sudo cset shield -r
 

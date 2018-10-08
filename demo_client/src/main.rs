@@ -23,15 +23,22 @@ use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
+use clap::Arg;
 
 mod client;
 
 fn main() {
     setup_logging();
 
-    let _matches = App::new("Spatiub")
+    let matches = App::new("Spatiub")
         .version("0.1")
         .author("Pierre L. <pierre.larger@gmail.com>")
+            .arg(Arg::with_name("rate")
+                .short("r")
+                .long("message_rate")
+                .value_name("RATE")
+                .help("The approximate message rate per client")
+                .takes_value(true))
         .get_matches();
 
     let hw_topo = Arc::new(Mutex::new(Topology::new()));
@@ -46,6 +53,9 @@ fn main() {
 
     let number_of_cores = 2;
 
+    let msg_per_sec: u64 = matches.value_of("rate").unwrap_or("1").parse::<u64>().unwrap();
+    info!("Message rate: {}", msg_per_sec);
+
     let mut client_handles = vec![];
     for i in 0..number_of_cores {
         let map = map.clone();
@@ -55,7 +65,13 @@ fn main() {
             num_cores - 2 - i,
             format!("client {}", i),
             move || {
-                client::run_clients(&map, addr, 1000, format!("client_log_{}.csv", i).as_str());
+                client::run_clients(
+                    &map,
+                    addr,
+                    1000,
+                    format!("client_log_{}.csv", i).as_str(),
+                    msg_per_sec,
+                );
             }
         );
 

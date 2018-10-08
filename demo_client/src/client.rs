@@ -59,6 +59,7 @@ pub fn run_clients(
     addr: SocketAddr,
     number_of_clients: usize,
     log_file_path: &str,
+    msg_per_sec: u64,
 ) {
     let mut iter = vec![];
     for i in 0..number_of_clients as u64 { iter.push(i) }
@@ -69,7 +70,7 @@ pub fn run_clients(
         .map(|i| {
             Delay::new(Instant::now().add(Duration::from_millis(i * rng.gen_range(15, 30))))
                 .map(|_| {
-                    run_client(map.clone(), addr, logger.clone())
+                    run_client(map.clone(), addr, logger.clone(), msg_per_sec)
                 })
                 .map_err(|err|{
                     panic!("Timer error: {}", err)
@@ -88,7 +89,12 @@ pub fn run_clients(
     };
 }
 
-fn run_client(map: MapDefinition, addr: SocketAddr, logger: Rc<RefCell<ClientEventLogger>>) -> impl Future<Item=(), Error=()> {
+fn run_client(
+    map: MapDefinition,
+    addr: SocketAddr,
+    logger: Rc<RefCell<ClientEventLogger>>,
+    msg_per_sec: u64,
+) -> impl Future<Item=(), Error=()> {
     let ref addr = addr;
     let client_entity_id = RefCell::new(None);
 
@@ -104,7 +110,12 @@ fn run_client(map: MapDefinition, addr: SocketAddr, logger: Rc<RefCell<ClientEve
             };
 
             if let Some(ref entity_id) = &*client_entity_id.borrow() {
-                trigger_new_move_if_client_entity_involved(message, &map, entity_id)
+                trigger_new_move_if_client_entity_involved(
+                    message,
+                    &map,
+                    entity_id,
+                    msg_per_sec
+                )
             } else {
                 panic!("Expected the entity id to be set");
             }
@@ -115,6 +126,7 @@ fn trigger_new_move_if_client_entity_involved(
     message: Message,
     map: &MapDefinition,
     client_entity_id: &Uuid,
+    msg_per_sec: u64,
 )
     -> Option<impl Future<Item=Message, Error=()>>
 {
@@ -130,7 +142,7 @@ fn trigger_new_move_if_client_entity_involved(
         }
     ) = message{
         if acting_entity.id() == client_entity_id {
-            let delayed_move = trigger_new_move(&mut rng, &map, acting_entity, to);
+            let delayed_move = trigger_new_move(&mut rng, &map, acting_entity, to, msg_per_sec);
 
             Some(delayed_move)
         } else {
@@ -141,10 +153,15 @@ fn trigger_new_move_if_client_entity_involved(
     }
 }
 
-const MSG_PER_SEC: u64 = 1;
-fn trigger_new_move(rng: &mut ThreadRng, map: &MapDefinition, mut entity: DemoEntity, from: Point) -> impl Future<Item=Message, Error=()> {
+fn trigger_new_move(
+    rng: &mut ThreadRng,
+    map: &MapDefinition,
+    mut entity: DemoEntity,
+    from: Point,
+    msg_per_sec: u64,
+) -> impl Future<Item=Message, Error=()> {
     let next_destination = map.random_point_next_to(&from, rng);
-    Delay::new(Instant::now().add(Duration::from_nanos(rng.gen_range(500_000_000/MSG_PER_SEC, 1_500_000_000/MSG_PER_SEC))))
+    Delay::new(Instant::now().add(Duration::from_nanos(rng.gen_range(500_000_000/msg_per_sec, 1_500_000_000/msg_per_sec))))
         .map(move |()| {
             entity.last_state_update = Timestamp::new();
 
