@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 cargo build --release
 
-sudo rm client_log*
+sudo rm -f client_log*
 
-sudo cset shield --cpu=1-3 --kthread=on
+TOTAL_NUM_CORES=$(nproc)
+
+sudo cset shield --cpu=1-$(($TOTAL_NUM_CORES - 1)) --kthread=on
 sleep 3s
 
 DURATION=$1
@@ -15,7 +17,7 @@ fi
 ./run_server.sh $DURATION &
 sleep 5s
 
-sudo timeout $DURATION"s" cset shield --exec chrt -f 99 ./target/release/spatiub_demo_client -- -r 1000 -n 10
+sudo timeout $DURATION"s" cset shield --exec chrt -f 99 ./target/release/spatiub_demo_client -- -r 1000 -n 10 -c $(($TOTAL_NUM_CORES - 2))
 
 sudo cset shield -r
 

@@ -45,19 +45,17 @@ fn main() {
                 .value_name("NUMBER_OF_CLIENTS")
                 .help("The number of clients to per core")
                 .takes_value(true))
+            .arg(Arg::with_name("number_of_cores")
+                .short("c")
+                .long("number_of_cores")
+                .value_name("NUMBER_OF_CORES")
+                .help("The number of core, 1 thread per core")
+                .takes_value(true))
         .get_matches();
 
     let hw_topo = Arc::new(Mutex::new(Topology::new()));
     let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
     let map = MapDefinition::new(16, 1024 * 4);
-
-    let num_cores = {
-        let topo_locked = hw_topo.lock().unwrap();
-        (*topo_locked).objects_with_type(&ObjectType::Core).unwrap().len()
-    };
-    info!("Found {} cores.", num_cores);
-
-    let number_of_cores = 2;
 
     let msg_per_sec = matches.value_of("rate").unwrap_or("1").parse::<u64>().unwrap();
     info!("Message rate: {}", msg_per_sec);
@@ -65,13 +63,16 @@ fn main() {
     let number_of_clients = matches.value_of("number_of_clients").unwrap_or("1000").parse::<usize>().unwrap();
     info!("Number of clients: {}", number_of_clients);
 
+    let number_of_cores = matches.value_of("number_of_cores").unwrap_or("1").parse::<usize>().unwrap();
+    info!("Number of cores: {}", number_of_cores);
+
     let mut client_handles = vec![];
     for i in 0..number_of_cores {
         let map = map.clone();
         let addr = addr.clone();
         let handle = run_thread(
             hw_topo.clone(),
-            num_cores - 2 - i,
+            i,
             format!("client {}", i),
             move || {
                 client::run_clients(
