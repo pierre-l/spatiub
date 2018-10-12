@@ -23,13 +23,20 @@ use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
+use clap::Arg;
 
 mod server;
 
 fn main() {
     setup_logging();
 
-    let _matches = App::new("Spatiub")
+    let matches = App::new("Spatiub")
+        .arg(Arg::with_name("core")
+            .short("c")
+            .long("core")
+            .value_name("CORE")
+            .help("The logical core (or processing unit) to pin the server on.")
+            .takes_value(true))
         .version("0.1")
         .author("Pierre L. <pierre.larger@gmail.com>")
         .get_matches();
@@ -38,17 +45,14 @@ fn main() {
     let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
     let map = MapDefinition::new(16, 1024 * 4);
 
-    let num_cores = {
-        let topo_locked = hw_topo.lock().unwrap();
-        (*topo_locked).objects_with_type(&ObjectType::Core).unwrap().len()
-    };
-    info!("Found {} cores.", num_cores);
+    let core = matches.value_of("core").unwrap_or("0").parse::<usize>().unwrap();
+    info!("Core: {}", core);
 
     let addr = addr.clone();
     let map = map.clone();
     run_thread(
         hw_topo.clone(),
-        num_cores - 1,
+        core,
         "server".to_string(),move || server::server(&addr, &map),
     ).join().unwrap();
 }
