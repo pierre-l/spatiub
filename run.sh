@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export RUSTFLAGS="-C target-cpu=native"
 cargo build --release
 
 sudo rm -f client_log*
@@ -17,7 +18,7 @@ fi
 ./run_server.sh $DURATION &
 sleep 5s
 
-sudo timeout $DURATION"s" cset shield --exec chrt -f 99 ./target/release/spatiub_demo_client -- -r 1000 -n 10 -c $(($TOTAL_NUM_CORES - 2))
+sudo timeout $DURATION"s" cset shield --exec chrt -f 99 ./target/release/spatiub_demo_client -- -r 100 -n 100 -c $(($TOTAL_NUM_CORES - 2))
 
 sudo cset shield -r
 
