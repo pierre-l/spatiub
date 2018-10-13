@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+
 export RUSTFLAGS="-C target-cpu=native"
 cargo build --release
 
 sudo rm -f client_log*
+
+sudo ./disable_hyperthreading.sh
 
 TOTAL_NUM_CORES=$(nproc)
 
@@ -28,3 +31,5 @@ cat client_log_*.csv > client_log.csv
 ./graph.sh
 
 sudo rm client_log_*
+
+sudo ./restore_hyperthreading.sh
