@@ -5,11 +5,17 @@ cargo build --release
 
 sudo rm -f client_log*
 
-sudo ./disable_hyperthreading.sh
+TOTAL_NUM_PU=$(nproc)
+THREADS_PER_CORE=$(lscpu | grep 'per core:' | awk '{print $4}')
+TOTAL_NUM_CORES=$((TOTAL_NUM_PU / $THREADS_PER_CORE))
 
-TOTAL_NUM_CORES=$(nproc)
+if [ ${TOTAL_NUM_PU} -ne ${TOTAL_NUM_CORES} ]; then
+    CPU_SET=$THREADS_PER_CORE"-"$(($TOTAL_NUM_PU - 1))
+else
+    CPU_SET="1-"$(($TOTAL_NUM_PU - 1))
+fi
 
-sudo cset shield --cpu=1-$(($TOTAL_NUM_CORES - 1)) --kthread=on
+sudo cset shield --cpu=${CPU_SET} --kthread=on
 sleep 3s
 
 DURATION=$1
@@ -31,5 +37,3 @@ cat client_log_*.csv > client_log.csv
 ./graph.sh
 
 sudo rm client_log_*
-
-sudo ./restore_hyperthreading.sh
