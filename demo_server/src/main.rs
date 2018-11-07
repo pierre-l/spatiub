@@ -16,18 +16,26 @@ use clap::App;
 use log::LevelFilter;
 use spatiub::spatial::MapDefinition;
 use std::net::SocketAddr;
+use clap::Arg;
 
 mod server;
 
 fn main() {
     setup_logging();
 
-    let _matches = App::new("Spatiub")
+    let matches = App::new("Spatiub")
         .version("0.1")
         .author("Pierre L. <pierre.larger@gmail.com>")
+        .arg(Arg::with_name("bind_address")
+            .short("b")
+            .long("bind_address")
+            .value_name("BIND_ADDRESS")
+            .help("The address to bind the server to")
+            .takes_value(true))
         .get_matches();
 
-    let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
+    let addr = matches.value_of("bind_address")
+        .unwrap_or("127.0.0.1:6142").parse::<SocketAddr>().unwrap();
     let map = MapDefinition::new(16, 1024 * 4);
 
     server::server(&addr, &map);

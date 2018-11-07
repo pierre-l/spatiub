@@ -38,9 +38,16 @@ fn main() {
             .value_name("NUMBER_OF_CLIENTS")
             .help("The number of clients to per core")
             .takes_value(true))
+        .arg(Arg::with_name("server_address")
+            .short("a")
+            .long("server_address")
+            .value_name("SERVER_ADDRESS")
+            .help("The server address")
+            .takes_value(true))
         .get_matches();
 
-    let addr: SocketAddr = "127.0.0.1:6142".parse().unwrap();
+    let server_addr = matches.value_of("server_address")
+        .unwrap_or("127.0.0.1:6142").parse::<SocketAddr>().unwrap();
     let map = MapDefinition::new(16, 1024 * 4);
 
     let msg_per_sec = matches.value_of("rate").unwrap_or("1").parse::<u64>().unwrap();
@@ -51,7 +58,7 @@ fn main() {
 
     client::run_clients(
         &map,
-        addr,
+        server_addr,
         number_of_clients,
         format!("client_log.csv").as_str(),
         msg_per_sec,
